@@ -176,12 +176,23 @@ export class TrustPipeline {
     if (this.perSource) src.kinState = kin.state;
     else rt.kinState = kin.state;
 
-    const geo = checkGeographic(
+    let geo = checkGeographic(
       event,
       { land: this.geo.land, ports: this.geo.ports, restricted: this.geo.restricted },
       this.thresholds.geographic,
       nowIso,
     );
+    // Without the detailed coastline (private data, not in the public repo) only the coarse
+    // hand-drawn polygons are loaded; they cannot support a "fail", so cap at warning.
+    if (this.geo.datasets?.land_is_fallback && geo.status === 'fail') {
+      geo = {
+        ...geo,
+        status: 'warning',
+        hard_alert: false,
+        anomaly_score: Math.min(geo.anomaly_score ?? 0.6, 0.6),
+        explanation: `${geo.explanation} (Coarse fallback coastline loaded — capped at warning.)`,
+      };
+    }
 
     // Spatial grid (~0.05°) so neighbour scan is not full O(n²) at fleet scale.
     const cell = (lat: number, lon: number) =>

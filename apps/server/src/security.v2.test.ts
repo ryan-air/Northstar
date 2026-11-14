@@ -148,6 +148,7 @@ describe('security + lab v2', () => {
   });
 
   it('P0.5: every check result in the snapshot carries evidence_class; verified coverage reported', () => {
+    for (let i = 0; i < 3; i++) app.tick();
     const vs = app.snapshot().vessels;
     expect(vs.length).toBeGreaterThan(0);
     for (const v of vs) {
