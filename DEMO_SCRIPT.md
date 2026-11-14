@@ -17,7 +17,7 @@
 
 Say: “We never inject attacks into recorded or live ships — only into ships we simulate. AoA needs a receiver path; Digitraffic has none, so we don’t fake it.”
 
-Injection policy: `NORTHSTAR_LAB_SIM_SHIPS` (default 3) sets how many synthetic ships join the Hist Lab; `NORTHSTAR_LEGACY_LAB_INJECTION=true` restores the old behaviour (attacks on the recorded full-stack ship) for comparison only.
+Injection policy (no override): every injected attack — scenarios, `/api/rf/load` spoof, `/api/rf/result`, `/api/osnma/verify` failure — lands on a simulated ship. Recorded and live ships never receive injected data; the recorded full-stack ship only carries its normal demo evidence (OSNMA test vector, nominal RF capture). `NORTHSTAR_LAB_SIM_SHIPS` (default 3) sets how many synthetic ships join the Hist Lab. The offline evaluation (`npm run eval:pipeline`) injects attacks into a copy of the frozen recording for measurement only; nothing from it is shown in the app.
 
 ---
 

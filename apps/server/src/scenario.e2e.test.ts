@@ -122,6 +122,22 @@ describe('scenario e2e (in-process, isolated fixtures)', () => {
     app.setScenario('normal');
   });
 
+  it('RF spoof load and posted RF results bind to simulated ships only', () => {
+    const fs = app.fullstackEntityId();
+    const spoof = app.loadRfLabResult('spoof');
+    expect(app.simulatedShipIds()).toContain(spoof.target);
+    const posted = app.applyRfLabResult({
+      ...(app.getRfLabResult() ?? ({} as never)),
+      entity_id: fs ?? 'LIVE-230000001',
+      status: 'fail',
+    } as never);
+    expect(posted.target).not.toBe(fs);
+    expect(app.simulatedShipIds()).toContain(posted.target);
+    // The full-stack recorded ship keeps the nominal demo capture.
+    expect(app.getRfLabResult()?.status).not.toBe('fail');
+    app.setScenario('normal');
+  });
+
   it('OSNMA protocol demo binds only to fullstack Hist Lab vessel by default', () => {
     for (let i = 0; i < 4; i++) app.tick();
     const fsId = app.fullstackEntityId();

@@ -170,14 +170,14 @@ async function main() {
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_rf_result', detail: parsed.error.message });
     }
-    app.applyRfLabResult(parsed.data);
-    return { ok: true, result: app.getRfLabResult() };
+    const applied = app.applyRfLabResult(parsed.data);
+    return { ok: true, ...applied };
   });
 
   server.post('/api/rf/load', { preHandler: requireAdmin }, async (req) => {
     const kind = (req.body as { kind?: string })?.kind === 'spoof' ? 'spoof' : 'nominal';
-    app.loadRfLabResult(kind);
-    return { ok: true, kind, result: app.getRfLabResult(), snapshot: app.snapshot() };
+    const applied = app.loadRfLabResult(kind);
+    return { ok: true, kind, ...applied, result: app.getRfLabResult(), snapshot: app.snapshot() };
   });
 
   // P4.2: state-changing — admin only.
@@ -207,7 +207,7 @@ async function main() {
   server.get('/api/lab', async () => ({
     ...app.snapshot().lab,
     use_historical: app.useHistoricalLab,
-    injection_policy: app.injectionPolicyActive() ? 'simulated_only' : 'legacy',
+    injection_policy: 'simulated_only',
     simulated_ships: app.simulatedShipIds(),
   }));
 
