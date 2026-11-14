@@ -308,6 +308,8 @@ async function main() {
   server.get('/api/lab/clock', async () => app.labClock());
   /** Lab-return events (times and kinds only, no raw data) for jump-to controls. */
   server.get('/api/lab/events', async () => app.labEvents() ?? { events: [] });
+  /** Reset only Lab + simulated ship positions (live ships and security state untouched). */
+  server.post('/api/lab/reset', { preHandler: requireScope('scenario') }, async () => app.resetLab());
   server.post('/api/lab/seek', { preHandler: requireScope('scenario') }, async (req, reply) => {
     const t = Date.parse(String((req.body as { t?: string } | undefined)?.t ?? ''));
     if (Number.isNaN(t)) return reply.code(400).send({ error: 't (ISO time) required' });

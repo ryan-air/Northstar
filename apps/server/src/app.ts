@@ -122,7 +122,8 @@ export class NorthstarApp {
   osnmaClient: OsnmaSidecarClient;
   listeners = new Set<Listener>();
   selectedEntityId: string | null = 'VESSEL-001';
-  viewMode: ViewMode = 'both';
+  /** UI offers Live and Lab only; 'both' remains accepted by the API. */
+  viewMode: ViewMode = 'lab';
   useHistoricalLab = false;
   private timer: NodeJS.Timeout | null = null;
   private lastOsnmaResult: import('@northstar/contracts').OsnmaResult | null = null;
@@ -762,6 +763,34 @@ export class NorthstarApp {
     }
   }
 
+  /**
+   * Reset only the Lab: stop any injected attack, move the Lab clock back to its start,
+   * simulated ships back to their route starts, recorded ships to their starting reports.
+   * Live ships, replay protection, OSNMA and the audit chain are untouched (unlike the
+   * 'reset' scenario, which wipes everything).
+   */
+  resetLab(): { ok: boolean; sim_time: string } {
+    this.clearSimOverrides();
+    if (this.useHistoricalLab) {
+      this.lab.setScenario('normal');
+      this.lab.resetPlayheads();
+    }
+    this.sim.reset();
+    this.sim.simTimeMs = this.useHistoricalLab ? this.lab.simTimeMs : this.sim.simTimeMs;
+    const labIds = this.useHistoricalLab ? this.lab.vessels.map((v) => v.track.entity_id) : [];
+    for (const id of [...labIds, ...this.sim.vessels.map((v) => v.def.entity_id)]) this.pipeline.removeEntity(id);
+    this.labValidator.reset();
+    this.labSecondaryIdx = 0;
+    if (this.labFolder && this.useHistoricalLab) this.applyLabStatic();
+    this.attachOsnmaToLabFleet();
+    void this.seedAttestation();
+    this.reseedLabShips(this.lab.simTimeMs);
+    const at = new Date(this.activeScenario().simTimeMs).toISOString();
+    this.audit.append('lab_reset', { sim_time: at });
+    this.broadcast({ type: 'snapshot', payload: this.snapshot() });
+    return { ok: true, sim_time: at };
+  }
+
   /** Lab-return events for the UI: receiver-flagged windows, RF captures, recording window. */
   labEvents(): {
     entity_id: string;
@@ -1327,7 +1356,7 @@ export class NorthstarApp {
         };
 
     const labLabel = this.useHistoricalLab
-      ? 'LAB · Digitraffic historical replay'
+      ? 'LAB · recorded + simulated ships'
       : 'LAB · synthetic';
 
     return {
@@ -1337,7 +1366,7 @@ export class NorthstarApp {
           ? labLabel
           : this.viewMode === 'live'
             ? 'LIVE AIS · Digitraffic'
-            : `LIVE + ${this.useHistoricalLab ? 'HIST LAB' : 'SYN LAB'}`
+            : 'LIVE + LAB'
         : labLabel,
       view_mode: this.viewMode,
       sim_time: simTime,

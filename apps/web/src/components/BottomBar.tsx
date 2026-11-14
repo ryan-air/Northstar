@@ -63,6 +63,14 @@ export function BottomBar({ onCyberOpen }: Props) {
       <div className="bottom-divider" />
       {renderGroup('Navigation', NAV_SCENARIOS)}
       {renderGroup('Security', SEC_SCENARIOS)}
+      <button
+        type="button"
+        className="scenario-btn reset"
+        title="Move Lab and simulated ships back to their starting positions and stop any attack. Live ships are not affected."
+        onClick={() => void useStore.getState().resetLab()}
+      >
+        Reset Lab
+      </button>
       {last?.target && (
         <div
           className="scenario-notice"

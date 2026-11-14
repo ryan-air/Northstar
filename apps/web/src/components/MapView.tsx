@@ -368,7 +368,7 @@ export function MapView() {
             <span className="dot live" /> Live AIS (Digitraffic)
           </div>
           <div className="row">
-            <span className="dot lab" /> Hist Lab (recorded AIS)
+            <span className="dot lab" /> Lab (recorded + simulated)
           </div>
           <div className="row muted" style={{ marginTop: 4 }}>
             Cyan ring = live · amber = replay

@@ -377,7 +377,7 @@ export function CyberPanel() {
         {summary?.osnma.lab_protocol ? (
           <>
             <br />
-            Hist Lab: <span className="mono">OSNMA {summary.osnma.lab_protocol}</span> (ICD test
+            Lab: <span className="mono">OSNMA {summary.osnma.lab_protocol}</span> (ICD test
             vector — not live signal)
           </>
         ) : null}

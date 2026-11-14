@@ -27,6 +27,8 @@ interface NorthstarStore {
   labVesselName: string | null;
   loadLabEvents: () => Promise<void>;
   seekLab: (iso: string) => Promise<boolean>;
+  /** Reset Lab + simulated ship positions only (live ships and security state untouched). */
+  resetLab: () => Promise<boolean>;
 }
 
 export const useStore = create<NorthstarStore>((set, get) => ({
@@ -48,6 +50,14 @@ export const useStore = create<NorthstarStore>((set, get) => ({
     } catch {
       /* lab events are optional */
     }
+  },
+  resetLab: async () => {
+    const r = await fetch('/api/lab/reset', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${adminToken()}` },
+    });
+    if (r.ok) set({ lastScenario: null });
+    return r.ok;
   },
   seekLab: async (iso) => {
     const r = await fetch('/api/lab/seek', {

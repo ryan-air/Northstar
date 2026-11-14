@@ -3,8 +3,8 @@ import type { ViewMode } from '../lib/types';
 
 const MODE_DESC: Record<ViewMode, string> = {
   live: 'LIVE AIS · Digitraffic',
-  lab: 'Digitraffic historical replay',
-  both: 'LIVE + HIST · Both feeds',
+  lab: 'Lab · recorded + simulated ships',
+  both: 'Live + Lab',
 };
 
 export function TopBar() {
@@ -13,7 +13,7 @@ export function TopBar() {
   const setViewMode = useStore((s) => s.setViewMode);
   const vessel = snapshot?.vessels?.find((v) => v.entity_id === selectedId);
   const alerts = snapshot?.alerts.filter((a) => a.severity !== 'info') ?? [];
-  const mode = snapshot?.view_mode ?? 'both';
+  const mode = snapshot?.view_mode ?? 'lab';
 
   return (
     <header className="top-bar">
@@ -64,15 +64,15 @@ export function TopBar() {
 
       {/* Right zone */}
       <div className="top-right">
-        <div className="view-toggle" title="Switch between live and historical lab feeds">
-          {(['live', 'both', 'lab'] as ViewMode[]).map((m) => (
+        <div className="view-toggle" title="Switch between live AIS and the Lab">
+          {(['live', 'lab'] as ViewMode[]).map((m) => (
             <button
               key={m}
               type="button"
               className={mode === m ? 'active' : ''}
               onClick={() => void setViewMode(m)}
             >
-              {m === 'live' ? 'Live' : m === 'lab' ? 'Hist Lab' : 'Both'}
+              {m === 'live' ? 'Live' : 'Lab'}
             </button>
           ))}
         </div>
