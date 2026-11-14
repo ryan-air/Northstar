@@ -183,7 +183,12 @@ export class DigitrafficAdapter {
       const events: PositionEvent[] = [];
       const records: ReplayRecord[] = [];
 
-      for (const f of features.slice(0, max)) {
+      // When capping, keep the ships that reported most recently (moving ships report most
+      // often), not the first N in the API's MMSI order — which is mostly moored vessels.
+      const ranked = [...features].sort(
+        (a, b) => (b.properties?.timestampExternal ?? 0) - (a.properties?.timestampExternal ?? 0),
+      );
+      for (const f of ranked.slice(0, max)) {
         const [flon, flat] = f.geometry?.coordinates ?? [];
         if (typeof flat !== 'number' || typeof flon !== 'number') continue;
         if (!Number.isFinite(flat) || !Number.isFinite(flon)) continue;

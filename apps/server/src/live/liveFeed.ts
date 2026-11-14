@@ -65,7 +65,7 @@ export class LiveFeedService {
       latitude: 59.95,
       longitude: 24.9,
       radiusKm: 70,
-      maxVessels: 100,
+      maxVessels: 200,
     });
     this.aisstream = new AisStreamAdapter({
       apiKey: aisstreamKey,
