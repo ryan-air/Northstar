@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../lib/store';
-import { NOT_APPLICABLE_NOTE, roleOf, visibleChecks } from '../lib/roles';
+import { CHECK_LABEL, NOT_APPLICABLE_NOTE, roleOf, shortExplanation, shortSources, visibleChecks } from '../lib/roles';
 
 export function RightPanel() {
   const [tab, setTab] = useState<'events' | 'evidence' | 'sources'>('events');
@@ -113,7 +113,7 @@ export function RightPanel() {
           {evidence.shown.map((c) => (
             <div key={c.check_id} className="evidence-row">
               <div className="head">
-                <strong className="mono">{c.check_id}</strong>
+                <strong className="evidence-name" title={c.check_id}>{CHECK_LABEL[c.check_id] ?? c.check_id}</strong>
                 <span className={`status-pill ${c.status}`}>{c.status}</span>
                 {c.evidence_class && c.status !== 'unavailable' && c.status !== 'unsupported' && (
                   <span
@@ -128,13 +128,17 @@ export function RightPanel() {
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 12, lineHeight: 1.35 }}>{c.explanation}</div>
-              <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-                anomaly={c.anomaly_score ?? 'n/a'} · q={(c.quality ?? 0).toFixed(2)} · fresh=
-                {(c.freshness ?? 0).toFixed(2)} · src={(c.source_ids ?? []).join(',') || '—'}
-                {c.missing_reason ? ` · missing: ${c.missing_reason}` : ''}
-                {c.hard_alert ? ' · HARD' : ''}
+              <div className="evidence-text" title={c.explanation}>
+                {shortExplanation(c.explanation)}
               </div>
+              {c.status !== 'unavailable' && c.status !== 'unsupported' && (
+                <div className="muted evidence-meta">
+                  Anomaly {c.anomaly_score != null ? c.anomaly_score.toFixed(2) : '—'} · Quality{' '}
+                  {(c.quality ?? 0).toFixed(2)} · Fresh {(c.freshness ?? 0).toFixed(2)}
+                  {shortSources(c.source_ids) ? ` · ${shortSources(c.source_ids)}` : ''}
+                  {c.hard_alert ? ' · Hard alert' : ''}
+                </div>
+              )}
             </div>
           ))}
           {!vessel && (

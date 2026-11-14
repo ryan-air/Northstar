@@ -1186,3 +1186,7 @@ body { font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased; 
 .scenario-btn { padding: 6px 11px; white-space: nowrap; line-height: 1.2; }
 .cyber-trigger { padding: 7px 12px; white-space: nowrap; }
 .bottom-divider { flex-shrink: 0; }
+
+.evidence-row .head .evidence-name { font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: var(--text); }
+.evidence-text { font-size: 12px; line-height: 1.4; color: var(--text-dim); margin-top: 2px; }
+.evidence-meta { font-size: 10.5px; margin-top: 4px; }

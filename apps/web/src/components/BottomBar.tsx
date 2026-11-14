@@ -27,11 +27,7 @@ const SEC_SCENARIOS: Scenario[] = [
   { id: 'rf_aoa_spoof_cluster', label: 'RF AoA spoof', hint: 'Synthetic spoof overlay on real 2-ant IQ' },
 ];
 
-interface Props {
-  onCyberOpen: () => void;
-}
-
-export function BottomBar({ onCyberOpen }: Props) {
+export function BottomBar() {
   const runScenario = useStore((s) => s.runScenario);
   const activeScenario = useStore((s) => s.snapshot?.active_scenario);
   const last = useStore((s) => s.lastScenario);
@@ -57,10 +53,6 @@ export function BottomBar({ onCyberOpen }: Props) {
 
   return (
     <div className="bottom-bar">
-      <button type="button" className="cyber-trigger" onClick={onCyberOpen}>
-        🛡 Cyber Console ↑
-      </button>
-      <div className="bottom-divider" />
       {renderGroup('Navigation', NAV_SCENARIOS)}
       {renderGroup('Security', SEC_SCENARIOS)}
       <button

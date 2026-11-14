@@ -45,3 +45,49 @@ export function visibleChecks(role: Role, checks: CheckResult[]): { shown: Check
   );
   return { shown, hidden: checks.length - shown.length };
 }
+
+
+/** Human-readable names for evidence layers. */
+export const CHECK_LABEL: Record<CheckResult['check_id'], string> = {
+  kinematics: 'Kinematics',
+  geographic: 'Geographic',
+  neighbors: 'Independent observation',
+  ais_cross_feed: 'AIS cross-feed',
+  gnss_diagnostics: 'GNSS receiver',
+  imu: 'Dead reckoning / IMU',
+  osnma: 'Galileo OSNMA',
+  device_signature: 'Device signature',
+  attestation: 'Hardware attestation',
+  rf_lab: 'RF capture',
+  spatial_aoa: 'Angle of arrival',
+  signed_vs_ais: 'Signed track vs AIS',
+  fleet_coherence: 'Fleet coherence',
+  identity: 'Identity',
+};
+
+/** One short, clean sentence from a check explanation (full text stays in the tooltip). */
+export function shortExplanation(text: string, max = 110): string {
+  let s = text.replace(/^(\s*\[[^\]]*\]\s*)+/, '').trim();
+  const cut = s.search(/(?<=[a-z0-9)%])\.\s/i);
+  if (cut > 0) s = s.slice(0, cut + 1);
+  if (s.length > max) s = s.slice(0, max - 1).replace(/[\s,;:–—-]+\S*$/, '') + '…';
+  return s;
+}
+
+const SOURCE_LABEL: Array<[RegExp, string]> = [
+  [/^vts_radar:?(.*)$/, 'radar $1'],
+  [/^ais_provider_a$|^ais$/, 'AIS'],
+  [/^ais_provider_b$/, 'AIS (2nd)'],
+  [/gyro_hdt/, 'gyro'],
+  [/speed_log\w*/, 'speed log'],
+  [/geo_land/, 'coastline'],
+  [/gnss_receiver/, 'receiver'],
+];
+
+export function shortSources(ids: string[] | undefined): string {
+  const out = (ids ?? []).map((id) => {
+    for (const [re, label] of SOURCE_LABEL) if (re.test(id)) return id.replace(re, label).trim();
+    return id.replace(/_/g, ' ');
+  });
+  return [...new Set(out)].slice(0, 3).join(', ');
+}
