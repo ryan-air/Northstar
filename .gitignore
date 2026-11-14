@@ -79,3 +79,6 @@ data_lab/
 
 # Generated SBOM (CI artifact)
 sbom.cdx.json
+
+# Local editor/agent launch config
+.claude/

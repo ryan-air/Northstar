@@ -1,12 +1,21 @@
-import { useEffect, useRef } from 'react';
+
+import { useEffect, useRef, useState } from 'react';
+
 import {
   Map as MapLibreMap,
+  setWorkerUrl,
   type AddLayerObject,
   type GeoJSONSource,
   type Map,
   type MapLayerMouseEvent,
   type StyleSpecification,
 } from 'maplibre-gl';
+
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+
+// Tell MapLibre where Vite bundles its worker.
+setWorkerUrl(workerUrl);
+
 import { useStore } from '../lib/store';
 import type { TrustBand, VesselState } from '../lib/types';
 
@@ -107,6 +116,7 @@ export function MapView() {
   const setMapStatus = useStore((s) => s.setMapStatus);
   const selectVessel = useStore((s) => s.selectVessel);
   const selectedId = useStore((s) => s.selectedId);
+  const [legendOpen, setLegendOpen] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -297,6 +307,8 @@ export function MapView() {
     };
   }, [selectVessel, setMapStatus]);
 
+  // Refresh vessel + track data every tick. Never moves the camera, so live
+  // updates don't fight the user panning around the map.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
@@ -304,21 +316,23 @@ export function MapView() {
     const ts = map.getSource('tracks') as GeoJSONSource | undefined;
     vs?.setData(vesselsToGeoJSON(vessels));
     ts?.setData(tracksToGeoJSON(vessels));
+  }, [vessels]);
 
-    const selected = vessels.find((v) => v.entity_id === selectedId);
+  // Recenter only when the selection changes — a one-time fly-to on click,
+  // not a per-tick pull. Reads latest positions from the store at fire time.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selectedId) return;
+    const selected = useStore
+      .getState()
+      .snapshot?.vessels?.find((v) => v.entity_id === selectedId);
     if (selected) {
-      // soft follow without fighting user pan too hard — only if far
-      const c = map.getCenter();
-      const dlat = Math.abs(c.lat - selected.position.lat);
-      const dlon = Math.abs(c.lng - selected.position.lon);
-      if (dlat > 1.5 || dlon > 2) {
-        map.easeTo({
-          center: [selected.position.lon, selected.position.lat],
-          duration: 800,
-        });
-      }
+      map.easeTo({
+        center: [selected.position.lon, selected.position.lat],
+        duration: 600,
+      });
     }
-  }, [vessels, selectedId]);
+  }, [selectedId]);
 
   return (
     <div className="map-pane">
@@ -329,29 +343,38 @@ export function MapView() {
       {mapStatus === 'loading' && (
         <div className="map-overlay map-status">Loading chart…</div>
       )}
-      <div className="map-overlay map-legend">
-        <div className="row">
-          <span className="dot high" /> High 85–100
+      <button
+        type="button"
+        className="map-overlay map-legend-toggle"
+        onClick={() => setLegendOpen((o) => !o)}
+      >
+        {legendOpen ? '✕ Legend' : 'Legend'}
+      </button>
+      {legendOpen && (
+        <div className="map-overlay map-legend">
+          <div className="row">
+            <span className="dot high" /> High 85–100
+          </div>
+          <div className="row">
+            <span className="dot caution" /> Caution 65–84
+          </div>
+          <div className="row">
+            <span className="dot suspicious" /> Suspicious 35–64
+          </div>
+          <div className="row">
+            <span className="dot critical" /> Critical 0–34
+          </div>
+          <div className="row" style={{ marginTop: 6 }}>
+            <span className="dot live" /> Live AIS (Digitraffic)
+          </div>
+          <div className="row">
+            <span className="dot lab" /> Hist Lab (recorded AIS)
+          </div>
+          <div className="row muted" style={{ marginTop: 4 }}>
+            Cyan ring = live · amber = replay
+          </div>
         </div>
-        <div className="row">
-          <span className="dot caution" /> Caution 65–84
-        </div>
-        <div className="row">
-          <span className="dot suspicious" /> Suspicious 35–64
-        </div>
-        <div className="row">
-          <span className="dot critical" /> Critical 0–34
-        </div>
-        <div className="row" style={{ marginTop: 6 }}>
-          <span className="dot live" /> Live AIS (Digitraffic)
-        </div>
-        <div className="row">
-          <span className="dot lab" /> Hist Lab (recorded AIS)
-        </div>
-        <div className="row muted" style={{ marginTop: 4 }}>
-          Cyan ring = live · amber = replay
-        </div>
-      </div>
+      )}
       <div className="map-overlay map-ts mono">{simTime ?? '—'} · WGS-84</div>
     </div>
   );

@@ -1,10 +1,15 @@
 import { create } from 'zustand';
-import type { AlertEvent, AppSnapshot, ScenarioId, VesselState, ViewMode } from './types';
+import type { AlertEvent, AppSnapshot, LabEvent, ScenarioId, ScenarioResult, VesselState, ViewMode } from './types';
+
+const adminToken = () =>
+  (import.meta as { env?: { VITE_NORTHSTAR_ADMIN_TOKEN?: string } }).env?.VITE_NORTHSTAR_ADMIN_TOKEN ??
+  'northstar-demo-admin';
 
 interface NorthstarStore {
   connected: boolean;
   snapshot: AppSnapshot | null;
   selectedId: string | null;
+  selectionInitialized: boolean;
   selectedEvent: AlertEvent | null;
   mapStatus: 'loading' | 'online' | 'offline' | 'error';
   setConnected: (v: boolean) => void;
@@ -15,22 +20,54 @@ interface NorthstarStore {
   setMapStatus: (s: NorthstarStore['mapStatus']) => void;
   runScenario: (id: ScenarioId) => Promise<void>;
   setViewMode: (mode: ViewMode) => Promise<void>;
+  /** Where the last scenario actually landed (attacks go to simulated ships only). */
+  lastScenario: ScenarioResult | null;
+  /** Lab-return events (receiver-flagged windows, RF captures) for jump-to controls. */
+  labEvents: LabEvent[];
+  labVesselName: string | null;
+  loadLabEvents: () => Promise<void>;
+  seekLab: (iso: string) => Promise<boolean>;
 }
 
 export const useStore = create<NorthstarStore>((set, get) => ({
   connected: false,
   snapshot: null,
-  selectedId: 'VESSEL-001',
+  selectedId: null,
+  selectionInitialized: false,
   selectedEvent: null,
   mapStatus: 'loading',
+  lastScenario: null,
+  labEvents: [],
+  labVesselName: null,
+  loadLabEvents: async () => {
+    try {
+      const r = await fetch('/api/lab/events');
+      if (!r.ok) return;
+      const b = (await r.json()) as { name?: string; events?: LabEvent[] };
+      set({ labEvents: b.events ?? [], labVesselName: b.name ?? null });
+    } catch {
+      /* lab events are optional */
+    }
+  },
+  seekLab: async (iso) => {
+    const r = await fetch('/api/lab/seek', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken()}` },
+      body: JSON.stringify({ t: iso }),
+    });
+    return r.ok;
+  },
   setConnected: (v) => set({ connected: v }),
   applySnapshot: (s) => {
     // Ignore non-snapshot payloads (e.g. 429 rate-limit JSON) that lack vessels[]
     if (!s || !Array.isArray(s.vessels)) return;
-    set({
-      snapshot: s,
-      selectedId: get().selectedId ?? s.selected_entity_id ?? s.vessels[0]?.entity_id ?? null,
-    });
+    const st = get();
+    // Pick a default on the first snapshot only. After that, respect the user's
+    // choice — including an explicit deselect (null) — instead of refilling it.
+    const selectedId = st.selectionInitialized
+      ? st.selectedId
+      : (s.selected_entity_id ?? s.vessels[0]?.entity_id ?? null);
+    set({ snapshot: s, selectedId, selectionInitialized: true });
   },
   applyVessel: (v) => {
     const snap = get().snapshot;
@@ -51,17 +88,17 @@ export const useStore = create<NorthstarStore>((set, get) => ({
   selectEvent: (e) => set({ selectedEvent: e }),
   setMapStatus: (s) => set({ mapStatus: s }),
   runScenario: async (id) => {
-    const adminToken =
-      (import.meta as { env?: { VITE_NORTHSTAR_ADMIN_TOKEN?: string } }).env
-        ?.VITE_NORTHSTAR_ADMIN_TOKEN ?? 'northstar-demo-admin';
-    await fetch('/api/scenario', {
+    const res = await fetch('/api/scenario', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${adminToken}`,
+        authorization: `Bearer ${adminToken()}`,
       },
       body: JSON.stringify({ scenario: id, entity_id: get().selectedId ?? 'VESSEL-001' }),
     });
+    if (!res.ok) return;
+    const b = (await res.json().catch(() => ({}))) as { target?: string; retargeted_from?: string };
+    set({ lastScenario: id === 'reset' || id === 'normal' ? null : { scenario: id, target: b.target, retargeted_from: b.retargeted_from } });
   },
   setViewMode: async (mode) => {
     const res = await fetch('/api/view-mode', {

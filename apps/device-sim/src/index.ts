@@ -16,6 +16,9 @@ import { mmsiFromIdentity, OnboardTrack } from './onboardTrack.js';
 
 const env = (a: string, b: string) => process.env[a] ?? process.env[b];
 const DEVICE_ID = env('NORTHSTAR_DEVICE_ID', 'FLAGSHIP_DEVICE_ID') ?? 'DEV-VESSEL-001';
+// If the operator pins an entity via env we honour it; otherwise device-sim
+// follows whatever vessel the server designated as the Hist Lab signed target
+// (data-driven, can change as the replay cache grows).
 /** May be overridden after first snapshot if NORTHSTAR_ENTITY_ID is unset. */
 let ENTITY_ID = env('NORTHSTAR_ENTITY_ID', 'FLAGSHIP_ENTITY_ID') ?? 'LAB-230685000';
 const ENTITY_ID_PINNED = Boolean(env('NORTHSTAR_ENTITY_ID', 'FLAGSHIP_ENTITY_ID'));

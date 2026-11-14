@@ -735,6 +735,58 @@ export class NorthstarApp {
     );
   }
 
+  /** Lab-return events for the UI: receiver-flagged windows, RF captures, recording window. */
+  labEvents(): {
+    entity_id: string;
+    name: string;
+    window: [string, string];
+    events: Array<{ kind: string; start: string; end: string; detail: string }>;
+  } | null {
+    const lab = this.labFolder;
+    if (!lab || !this.useHistoricalLab) return null;
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const events = [
+      ...lab.receiverEvents.map((e) => ({
+        kind: e.kind,
+        start: iso(e.startMs),
+        end: iso(e.endMs),
+        detail: e.kind === 'spoofing' ? (e.maxState >= 3 ? 'receiver: spoofing affirmed' : 'receiver: spoofing indicated') : e.maxState >= 3 ? 'receiver: jamming critical' : 'receiver: jamming warning',
+      })),
+      ...lab.captures.map((c) => ({
+        kind: 'rf_capture',
+        start: iso(c.startMs),
+        end: iso(c.endMs),
+        detail: `RF capture ${c.id}: ${c.result.status}`,
+      })),
+    ].sort((a, b) => a.start.localeCompare(b.start));
+    return { entity_id: lab.entityId, name: lab.name, window: [iso(lab.windowMs[0]), iso(lab.windowMs[1])], events };
+  }
+
+  /**
+   * Jump the Hist Lab clock (e.g. to a lab event). Lab and simulated ships are cleared first
+   * so the jump is not scored as a teleport; lab inputs are re-synced to the new time.
+   */
+  seekLab(tMs: number): { ok: boolean; sim_time?: string } {
+    if (!this.useHistoricalLab) return { ok: false };
+    const t = this.lab.seek(tMs);
+    for (const v of this.lab.vessels) this.pipeline.removeEntity(v.track.entity_id);
+    for (const id of this.labSimShipIds) this.pipeline.removeEntity(id);
+    this.labValidator.reset();
+    this.sim.simTimeMs = t;
+    if (this.labFolder) {
+      const sec = this.labFolder.secondaryAis;
+      let i = 0;
+      while (i < sec.length && Date.parse(sec[i]!.source_timestamp) <= t) i++;
+      this.labSecondaryIdx = i;
+      this.applyLabStatic();
+    }
+    this.attachOsnmaToLabFleet();
+    void this.seedAttestation();
+    this.audit.append('lab_seek', { sim_time: new Date(t).toISOString() });
+    this.broadcast({ type: 'snapshot', payload: this.snapshot() });
+    return { ok: true, sim_time: new Date(t).toISOString() };
+  }
+
   /** Attacks always go to simulated ships only; kept as a method for the API/status. */
   injectionPolicyActive(): true {
     return true;
@@ -1305,6 +1357,11 @@ export class NorthstarApp {
       alerts: this.pipeline.getAlerts(),
       timeline: this.pipeline.getTimeline(),
       selected_entity_id: this.selectedEntityId,
+      injection: {
+        policy: 'simulated_only' as const,
+        simulated_ships: this.simulatedShipIds(),
+        lab_vessel_id: this.labFolder && this.useHistoricalLab ? this.labFolder.entityId : null,
+      },
     };
   }
 

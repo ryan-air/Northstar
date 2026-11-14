@@ -47,6 +47,9 @@ export interface TrustAssessment {
   available_checks: number;
   expected_checks: number;
   hard_alerts: string[];
+  /** 'non_vessel_transponder' for test units / base stations / AtoN (label only). */
+  transponder_kind?: 'vessel' | 'non_vessel_transponder';
+  transponder_kind_reasons?: string[];
   explanation: string;
   assessed_at: string;
   config_version: string;
@@ -137,4 +140,18 @@ export interface AppSnapshot {
   alerts: AlertEvent[];
   timeline: AlertEvent[];
   selected_entity_id?: string | null;
+  injection?: { policy: 'simulated_only'; simulated_ships: string[]; lab_vessel_id: string | null };
+}
+
+export interface LabEvent {
+  kind: string;
+  start: string;
+  end: string;
+  detail: string;
+}
+
+export interface ScenarioResult {
+  scenario: string;
+  target?: string;
+  retargeted_from?: string;
 }

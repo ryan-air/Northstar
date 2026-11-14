@@ -1,237 +1,243 @@
 import { useState } from 'react';
 import { useStore } from '../lib/store';
-import type { ScenarioId } from '../lib/types';
-import { CyberPanel } from './CyberPanel';
-
-const SCENARIOS: Array<{ id: ScenarioId; label: string; hint: string }> = [
-  { id: 'normal', label: 'Normal navigation', hint: 'Healthy track, high trust' },
-  { id: 'sudden_spoof', label: 'Sudden spoof / teleport', hint: 'Jump inland' },
-  { id: 'gradual_drift', label: 'Gradual drift spoofing', hint: 'Slow divergence' },
-  { id: 'ais_disagreement', label: 'AIS neighbor disagreement', hint: 'Independent feed conflict' },
-  { id: 'gnss_jamming', label: 'GNSS jamming-like', hint: 'Simulated signal degradation' },
-  { id: 'imu_disagreement', label: 'IMU disagreement', hint: 'Simulated inertial residual' },
-  { id: 'signed_tamper', label: 'Signed telemetry tamper', hint: 'Alter field after sign' },
-  { id: 'signed_replay', label: 'Replayed signed message', hint: 'Old sequence resent' },
-  { id: 'stale_clock_skew', label: 'Stale / clock skew', hint: 'Provider B timestamps aged' },
-  {
-    id: 'osnma_auth',
-    label: 'OSNMA auth (test vector)',
-    hint: 'Protocol verification demo — authenticated',
-  },
-  {
-    id: 'osnma_failure',
-    label: 'OSNMA MAC failure (fixture)',
-    hint: 'Protocol verification demo — failed',
-  },
-  {
-    id: 'rf_aoa_spoof_cluster',
-    label: 'RF AoA single-direction',
-    hint: 'Synthetic spoof overlay on real 2-ant IQ',
-  },
-  { id: 'reset', label: 'Reset scenario', hint: 'Clear state & restart' },
-];
 
 export function RightPanel() {
-  const [tab, setTab] = useState<'vessel' | 'evidence' | 'scenarios' | 'cyber'>('cyber');
+  const [tab, setTab] = useState<'events' | 'evidence' | 'sources'>('events');
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const snapshot = useStore((s) => s.snapshot);
   const selectedId = useStore((s) => s.selectedId);
-  const selectVessel = useStore((s) => s.selectVessel);
-  const runScenario = useStore((s) => s.runScenario);
   const vessel = snapshot?.vessels?.find((v) => v.entity_id === selectedId);
+  const events = [...(snapshot?.timeline ?? [])].reverse();
+  const selectedEvent = events.find((e) => e.id === selectedEventId) ?? null;
 
   return (
     <aside className="panel right">
       <div className="tabs">
-        <button className={tab === 'vessel' ? 'active' : ''} onClick={() => setTab('vessel')}>
-          Vessel
-        </button>
-        <button className={tab === 'evidence' ? 'active' : ''} onClick={() => setTab('evidence')}>
-          Evidence
-        </button>
-        <button className={tab === 'cyber' ? 'active' : ''} onClick={() => setTab('cyber')}>
-          Cyber
+        <button className={tab === 'events' ? 'active' : ''} onClick={() => setTab('events')}>
+          Events
         </button>
         <button
-          className={tab === 'scenarios' ? 'active' : ''}
-          onClick={() => setTab('scenarios')}
+          className={tab === 'evidence' ? 'active' : ''}
+          onClick={() => setTab('evidence')}
         >
-          Scenarios
+          Evidence
+        </button>
+        <button className={tab === 'sources' ? 'active' : ''} onClick={() => setTab('sources')}>
+          Sources
         </button>
       </div>
 
-      {tab === 'vessel' && (
-        <div className="tab-body">
-          <div className="panel-title" style={{ padding: '0 0 8px', border: 'none' }}>
-            Fleet
-          </div>
-          <div style={{ maxHeight: 120, overflow: 'auto', marginBottom: 10 }}>
-            {(snapshot?.vessels ?? []).map((v) => {
-              const isFull =
-                v.entity_id === snapshot?.lab?.fullstack_entity_id ||
-                v.entity_id === snapshot?.lab?.signed_entity_id;
-              return (
-                <button
-                  key={v.entity_id}
-                  onClick={() => selectVessel(v.entity_id)}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    background: v.entity_id === selectedId ? 'var(--bg-elevated)' : 'transparent',
-                    border: '1px solid var(--border-soft)',
-                    marginBottom: 4,
-                    padding: '6px 8px',
-                  }}
-                >
-                  <span className="mono">
-                    {v.name ?? v.entity_id}
-                    {isFull ? ' · FULL-STACK' : v.origin === 'live' ? ' · LIVE' : ''}
-                  </span>
-                  <span style={{ float: 'right', color: 'var(--text-dim)' }}>
-                    {v.trust.trust_score}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {vessel ? (
-            <>
-              <div className="kv">
-                <div className="k">ID</div>
-                <div className="v">{vessel.entity_id}</div>
-                <div className="k">Name</div>
-                <div className="v">{vessel.name ?? '—'}</div>
-                <div className="k">Class</div>
-                <div className="v">{vessel.vessel_class ?? '—'}</div>
-                <div className="k">Trust</div>
-                <div className="v">
-                  {vessel.trust.trust_score} ({vessel.trust.trust_band})
+      {tab === 'events' && (
+        <div className="tab-body events-tab">
+          {snapshot?.feed_health && Object.keys(snapshot.feed_health).length > 0 && (
+            <div className="feed-status-row">
+              {Object.entries(snapshot.feed_health).map(([k, v]) => (
+                <div key={k} className="feed-status-item">
+                  <span className={`led ${v}`} />
+                  <span>{k}</span>
                 </div>
-                <div className="k">Coverage</div>
-                <div className="v">
-                  {vessel.trust.evidence_coverage.toFixed(0)}% · {vessel.trust.available_checks}/
-                  {vessel.trust.expected_checks}
-                </div>
-                <div className="k">Verified cov.</div>
-                <div className="v" title="Counts only live or recorded evidence (no simulated/demo checks)">
-                  {vessel.trust.verified_evidence_coverage != null
-                    ? `${vessel.trust.verified_evidence_coverage.toFixed(0)}%`
-                    : '—'}
-                </div>
-                <div className="k">Position</div>
-                <div className="v">
-                  {vessel.position.lat.toFixed(5)} N, {vessel.position.lon.toFixed(5)} E
-                </div>
-                <div className="k">Updated</div>
-                <div className="v">{vessel.last_update}</div>
-              </div>
-              <div className="explain">{vessel.trust.explanation}</div>
-            </>
-          ) : (
-            <p className="muted">No vessel selected.</p>
+              ))}
+            </div>
           )}
+
+          {/* Pinned detail — stays put while the live feed scrolls below. */}
+          {selectedEvent && (
+            <div className="event-detail-pinned">
+              <div className="event-detail-head">
+                <strong>{selectedEvent.title}</strong>
+                <button
+                  type="button"
+                  className="clear-sel"
+                  onClick={() => setSelectedEventId(null)}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="mono muted" style={{ fontSize: 10, marginBottom: 4 }}>
+                {selectedEvent.observed_at.slice(11, 19)} · {selectedEvent.entity_id}
+                {selectedEvent.trust_score_before != null &&
+                selectedEvent.trust_score_after != null
+                  ? ` · ${selectedEvent.trust_score_before}→${selectedEvent.trust_score_after}`
+                  : ''}
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.4 }}>{selectedEvent.explanation}</div>
+              {selectedEvent.check_ids.length > 0 && (
+                <div className="muted mono" style={{ fontSize: 10, marginTop: 4 }}>
+                  checks: {selectedEvent.check_ids.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="event-log">
+            {events.length === 0 && (
+              <div className="muted" style={{ padding: 12, fontSize: 12 }}>
+                No events yet — run a scenario or wait for anomalies.
+              </div>
+            )}
+            {events.map((e) => (
+              <div
+                key={e.id}
+                className={`event-row ${e.severity}${selectedEventId === e.id ? ' selected' : ''}`}
+                onClick={() =>
+                  setSelectedEventId(selectedEventId === e.id ? null : e.id)
+                }
+              >
+                <div className="event-row-main">
+                  <span className={`event-dot ${e.severity}`} />
+                  <span className="event-time mono">{e.observed_at.slice(11, 19)}</span>
+                  <span className="event-vessel">{e.entity_id}</span>
+                  <span className="event-title">{e.title}</span>
+                  {e.trust_score_before != null && e.trust_score_after != null && (
+                    <span className="event-delta mono">
+                      {e.trust_score_before}→{e.trust_score_after}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {tab === 'evidence' && (
         <div className="tab-body">
-          <p className="muted" style={{ marginTop: 0, fontSize: 11, lineHeight: 1.35 }}>
-            Full-stack Lab vessel includes dual-ant lab AoA. LIVE ships stay RF-unavailable. Look
-            for Simulated / Protocol demo / Lab IQ labels — never treat those as Digitraffic RF.
-          </p>
-          {(vessel?.trust.checks ?? []).map((c) => {
-            const ev = (c.evidence ?? {}) as Record<string, unknown>;
-            const scenarioInjected =
-              !!ev.spoof_overlay ||
-              ev.fixture === true ||
-              (ev.labels as { fixture?: boolean; simulated?: boolean } | undefined)?.fixture ===
-                true ||
-              /spoof_overlay|scenario|fixture|Simulated|Protocol verification demo/i.test(
-                c.explanation,
-              );
-            const dataBadge =
-              c.status === 'unavailable' || c.status === 'unsupported'
-                ? null
-                : scenarioInjected
-                  ? 'scenario-injected'
-                  : 'detected from data';
-            const mode =
-              c.check_id === 'rf_lab' || c.check_id === 'spatial_aoa'
-                ? c.status === 'unavailable'
-                  ? 'No lab RF'
-                  : 'Lab IQ / AoA'
-                : (c.source_ids ?? []).some((s) => /simulat|fixture|demo/i.test(s)) ||
-                    /\[Simulated|Protocol verification demo/i.test(c.explanation)
-                  ? c.check_id === 'osnma'
-                    ? 'Protocol demo'
-                    : 'Simulated'
-                  : c.status === 'unavailable' || c.status === 'unsupported'
-                    ? 'No live input'
-                    : 'Live path';
-            const fcHz = typeof ev.center_freq_hz === 'number' ? ev.center_freq_hz : null;
-            return (
-              <div key={c.check_id} className="evidence-row">
-                <div className="head">
-                  <strong className="mono">{c.check_id}</strong>
-                  <span className={`status-pill ${c.status}`}>{c.status}</span>
-                </div>
-                <div className="muted" style={{ fontSize: 10, marginBottom: 4 }}>
-                  mode: {mode}
-                  {c.evidence_class ? ` · evidence: ${c.evidence_class}` : ''}
-                  {dataBadge ? (
-                    <>
-                      {' · '}
-                      <span
-                        style={{
-                          color:
-                            dataBadge === 'detected from data'
-                              ? 'var(--ok, #6c6)'
-                              : 'var(--warn, #cc8)',
-                        }}
-                      >
-                        {dataBadge}
-                      </span>
-                    </>
-                  ) : null}
-                  {fcHz != null ? ` · fc ${(fcHz / 1e6).toFixed(3)} MHz` : ''}
-                </div>
-                <div style={{ fontSize: 12, lineHeight: 1.35 }}>{c.explanation}</div>
-                <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-                  anomaly={c.anomaly_score ?? 'n/a'} · q={(c.quality ?? 0).toFixed(2)} · fresh=
-                  {(c.freshness ?? 0).toFixed(2)} · src={(c.source_ids ?? []).join(',') || '—'}
-                  {c.missing_reason ? ` · missing: ${c.missing_reason}` : ''}
-                  {c.hard_alert ? ' · HARD' : ''}
-                </div>
+          {(vessel?.trust.checks ?? []).map((c) => (
+            <div key={c.check_id} className="evidence-row">
+              <div className="head">
+                <strong className="mono">{c.check_id}</strong>
+                <span className={`status-pill ${c.status}`}>{c.status}</span>
+                {c.evidence_class && c.status !== 'unavailable' && c.status !== 'unsupported' && (
+                  <span
+                    className={`evidence-pill ${c.evidence_class}`}
+                    title="Where this evidence comes from: live feed, recorded data, simulated/synthetic, or a fixed demo sample"
+                  >
+                    {c.evidence_class === 'simulated' && /synthetic/i.test(c.explanation)
+                      ? 'synthetic'
+                      : c.evidence_class}
+                  </span>
+                )}
               </div>
-            );
-          })}
-          {!vessel && <p className="muted">Select a vessel to inspect evidence layers.</p>}
+              <div style={{ fontSize: 12, lineHeight: 1.35 }}>{c.explanation}</div>
+              <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
+                anomaly={c.anomaly_score ?? 'n/a'} · q={(c.quality ?? 0).toFixed(2)} · fresh=
+                {(c.freshness ?? 0).toFixed(2)} · src={(c.source_ids ?? []).join(',') || '—'}
+                {c.missing_reason ? ` · missing: ${c.missing_reason}` : ''}
+                {c.hard_alert ? ' · HARD' : ''}
+              </div>
+            </div>
+          ))}
+          {!vessel && (
+            <p className="muted" style={{ marginTop: 0 }}>
+              Select a vessel to inspect evidence layers.
+            </p>
+          )}
         </div>
       )}
 
-      {tab === 'cyber' && <CyberPanel />}
-
-      {tab === 'scenarios' && (
+      {tab === 'sources' && (
         <div className="tab-body">
-          <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>
-            Attack overlays on Digitraffic historical AIS replay (or synthetic fallback). Overlays
-            are labelled — base tracks are recorded Finnish AIS when Hist Lab is active.
-          </p>
-          <div className="scenario-list">
-            {SCENARIOS.map((s) => (
-              <button
-                key={s.id}
-                className={`${snapshot?.active_scenario === s.id ? 'active' : ''} ${s.id === 'reset' ? 'reset' : ''}`}
-                onClick={() => runScenario(s.id)}
-              >
-                <div>{s.label}</div>
-                <div className="muted" style={{ fontSize: 11 }}>
-                  {s.hint}
+          {(() => {
+            const fullstackId =
+              snapshot?.lab?.fullstack_entity_id ?? snapshot?.lab?.signed_entity_id;
+            const fullstackVessel = snapshot?.vessels?.find((v) => v.entity_id === fullstackId);
+            const aoaStatus = snapshot?.lab?.rf_aoa_status;
+            const cluster = snapshot?.lab?.rf_summary?.cluster_score;
+            return (
+              <div className={`live-card${fullstackId ? ' ok' : ''}`}>
+                <div className="live-card-head">
+                  <strong>Full-stack Lab vessel</strong>
+                  <span className="origin-tag lab">RF+AoA</span>
                 </div>
-              </button>
-            ))}
+                <div className="source-detail">
+                  Signed telemetry · OSNMA ICD · dual-antenna AoA
+                </div>
+                {fullstackId && fullstackVessel && (
+                  <button
+                    type="button"
+                    className="live-row"
+                    style={{ marginTop: 8, width: '100%' }}
+                    onClick={() => useStore.getState().selectVessel(fullstackId)}
+                  >
+                    <span className="name">{fullstackVessel.name ?? fullstackId}</span>
+                    <span className={`band ${fullstackVessel.trust.trust_band}`}>
+                      {fullstackVessel.trust.trust_score}
+                    </span>
+                  </button>
+                )}
+                {aoaStatus && (
+                  <div
+                    className={`origin-tag ${aoaStatus === 'pass' ? 'live' : 'lab'}`}
+                    style={{ marginTop: 8 }}
+                  >
+                    AoA: {aoaStatus}
+                    {typeof cluster === 'number' ? ` · cluster ${cluster.toFixed(2)}` : ''}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          <div
+            className={`live-card${snapshot?.lab?.mode === 'historical_replay' ? ' ok' : ''}`}
+            style={{ marginTop: 8 }}
+          >
+            <div className="live-card-head">
+              <strong>
+                {snapshot?.lab?.mode === 'historical_replay'
+                  ? 'Digitraffic replay'
+                  : snapshot?.lab?.mode === 'synthetic_fallback'
+                    ? 'Synthetic fallback'
+                    : 'Lab starting…'}
+              </strong>
+              <span className="mono">{snapshot?.lab?.vessel_count ?? 0} ships</span>
+            </div>
+            <div className="source-detail">Recorded Finnish AIS · attack overlays are synthetic</div>
+            {snapshot?.lab?.osnma_protocol_status && (
+              <div
+                className={`origin-tag${snapshot.lab.osnma_protocol_status === 'authenticated' ? ' live' : ' lab'}`}
+                style={{ marginTop: 8 }}
+              >
+                OSNMA:{' '}
+                {snapshot.lab.osnma_protocol_status === 'authenticated'
+                  ? 'ICD demo'
+                  : snapshot.lab.osnma_protocol_status}
+              </div>
+            )}
+            {snapshot?.lab?.recorder?.last_poll_at && (
+              <div className="mono muted" style={{ fontSize: 10, marginTop: 6 }}>
+                Recorder {snapshot.lab.recorder.status} · +{snapshot.lab.recorder.last_count} @{' '}
+                {snapshot.lab.recorder.last_poll_at.slice(11, 19)}
+              </div>
+            )}
           </div>
+
+          {(() => {
+            const live = snapshot?.live;
+            const liveOk =
+              live?.digitraffic.status === 'ok' || live?.digitraffic.status === 'degraded';
+            return (
+              <div className={`live-card${liveOk ? ' ok' : ''}`} style={{ marginTop: 8 }}>
+                <div className="live-card-head">
+                  <strong>{liveOk ? 'Live AIS' : live?.digitraffic.status ?? 'Starting…'}</strong>
+                  <span className="mono">{live?.vessel_count ?? 0} ships</span>
+                </div>
+                <div className="source-detail">
+                  Digitraffic · partial coverage (kinematics / geo only)
+                </div>
+                {live?.digitraffic.last_updated && (
+                  <div className="mono muted" style={{ fontSize: 10, marginTop: 6 }}>
+                    Updated {live.digitraffic.last_updated}
+                  </div>
+                )}
+                {live?.digitraffic.last_error && (
+                  <div style={{ color: 'var(--danger)', fontSize: 11, marginTop: 4 }}>
+                    {live.digitraffic.last_error}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
     </aside>

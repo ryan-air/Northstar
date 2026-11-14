@@ -274,6 +274,13 @@ export class HistoricalLab {
     }
   }
 
+  /** Move the shared Lab clock (clamped to the timeline); returns the time actually set. */
+  seek(tMs: number): number {
+    const t = Math.min(Math.max(tMs, this.timelineStartMs), this.timelineEndMs);
+    this.seekShared(t);
+    return t;
+  }
+
   private seekShared(tMs: number): void {
     this.simTimeMs = tMs;
     for (const v of this.vessels) {

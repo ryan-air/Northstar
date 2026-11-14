@@ -306,6 +306,15 @@ async function main() {
     return reply.code(result.status).send(result.body);
   });
   server.get('/api/lab/clock', async () => app.labClock());
+  /** Lab-return events (times and kinds only, no raw data) for jump-to controls. */
+  server.get('/api/lab/events', async () => app.labEvents() ?? { events: [] });
+  server.post('/api/lab/seek', { preHandler: requireScope('scenario') }, async (req, reply) => {
+    const t = Date.parse(String((req.body as { t?: string } | undefined)?.t ?? ''));
+    if (Number.isNaN(t)) return reply.code(400).send({ error: 't (ISO time) required' });
+    const r = app.seekLab(t);
+    if (!r.ok) return reply.code(409).send({ error: 'historical lab not active' });
+    return r;
+  });
   /** Imported lab returns (scripts/lab/import_lab_return.py → data/lab/<id>/): readiness only, no raw rows. */
   server.get('/api/lab/returns', async () => {
     const root = join(REPO_ROOT, 'data', 'lab');
@@ -408,10 +417,15 @@ async function main() {
       'Key rotate / revoke + shore-signed revocation list',
       'SHA-256 audit hash chain + shore-signed tip checkpoint',
       'OSNMAlib ICD TESLA/MAC (fullstack Hist Lab only by default)',
-      '2-ant lab IQ AoA (full-stack Hist Lab only)',
+      app.labFolder ? 'Recorded multi-element RF AoA for the lab vessel' : '2-ant lab IQ AoA (full-stack Hist Lab only)',
       app.env.mtlsEnabled
         ? 'mTLS on telemetry (channel identity)'
         : 'mTLS available (NORTHSTAR_TLS_ENABLED + MTLS_ENABLED)',
+      'Plain-HTTP telemetry refused on network binds (TLS device server)',
+      'Scoped admin tokens (scenario / rf / osnma / audit / devices / demo)',
+      'One-time, per-vessel enrolment tokens (hashed, expiring)',
+      'Attacks injected only into simulated ships',
+      'Seeded fuzzing of untrusted inputs + SBOM in CI',
     ],
     rf: app.getRfLabResult(),
     fullstack_entity_id: app.fullstackEntityId(),
