@@ -164,21 +164,14 @@ export function fuseTrust(
     .length;
 
   const failing = checks.filter((c) => c.status === 'fail' || c.status === 'warning');
-  const anomalyTier =
-    checks.some((c) => c.hard_alert || (c.anomaly_score ?? 0) >= 0.85)
-      ? 'confirmed'
-      : failing.length > 0
-        ? 'anomaly'
-        : 'nominal';
   let explanation: string;
   if (activeHard.length > 0) {
     const hardChecks = checks.filter((c) => c.hard_alert);
-    explanation = `[${anomalyTier}] Hard alert active: ${hardChecks.map((c) => c.explanation).join(' ')} Trust capped. This is an integrity estimate, not a probability.`;
+    explanation = `Hard alert active: ${hardChecks.map((c) => c.explanation).join(' ')}`;
   } else if (failing.length === 0) {
-    explanation =
-      `[${anomalyTier}] Available checks are within nominal bounds. Trust score is a prototype integrity estimate, not a calibrated probability that the position is genuine.`;
+    explanation = 'Available checks are within nominal bounds.';
   } else {
-    explanation = `[${anomalyTier}] ${failing.map((c) => c.explanation).join(' ')} Trust score is a heuristic integrity estimate, not a probability.`;
+    explanation = failing.map((c) => c.explanation).join(' ');
   }
 
   const assessment: TrustAssessment = {

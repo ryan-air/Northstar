@@ -1,13 +1,15 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { TopBar } from './components/TopBar';
 import { LeftPanel } from './components/LeftPanel';
 import { MapView } from './components/MapView';
 import { RightPanel } from './components/RightPanel';
-import { Timeline } from './components/Timeline';
+import { BottomBar } from './components/BottomBar';
+import { CyberWindow } from './components/CyberWindow';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { connectWs } from './lib/store';
 
 export function App() {
+  const [cyberOpen, setCyberOpen] = useState(false);
   useEffect(() => connectWs(), []);
 
   return (
@@ -21,7 +23,8 @@ export function App() {
           </ErrorBoundary>
           <RightPanel />
         </div>
-        <Timeline />
+        <BottomBar onCyberOpen={() => setCyberOpen(true)} />
+        <CyberWindow open={cyberOpen} onClose={() => setCyberOpen(false)} />
       </div>
     </ErrorBoundary>
   );

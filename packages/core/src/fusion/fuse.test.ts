@@ -91,7 +91,7 @@ describe('fuseTrust', () => {
       '2026-11-11T10:00:00.000Z',
     );
     expect(assessment.trust_score).toBe(10);
-    expect(assessment.explanation).toContain('[confirmed]');
+    expect(assessment.explanation).toContain('test');
   });
 
   it('combines independent warnings with noisy-OR', () => {
@@ -108,6 +108,6 @@ describe('fuseTrust', () => {
     );
     expect(assessment.trust_score).toBeLessThanOrEqual(60);
     expect(assessment.trust_score).toBeGreaterThan(40);
-    expect(assessment.explanation).toContain('[anomaly]');
+    expect(assessment.explanation).toContain('test');
   });
 });

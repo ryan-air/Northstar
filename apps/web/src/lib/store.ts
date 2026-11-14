@@ -5,6 +5,7 @@ interface NorthstarStore {
   connected: boolean;
   snapshot: AppSnapshot | null;
   selectedId: string | null;
+  selectionInitialized: boolean;
   selectedEvent: AlertEvent | null;
   mapStatus: 'loading' | 'online' | 'offline' | 'error';
   setConnected: (v: boolean) => void;
@@ -20,17 +21,21 @@ interface NorthstarStore {
 export const useStore = create<NorthstarStore>((set, get) => ({
   connected: false,
   snapshot: null,
-  selectedId: 'VESSEL-001',
+  selectedId: null,
+  selectionInitialized: false,
   selectedEvent: null,
   mapStatus: 'loading',
   setConnected: (v) => set({ connected: v }),
   applySnapshot: (s) => {
     // Ignore non-snapshot payloads (e.g. 429 rate-limit JSON) that lack vessels[]
     if (!s || !Array.isArray(s.vessels)) return;
-    set({
-      snapshot: s,
-      selectedId: get().selectedId ?? s.selected_entity_id ?? s.vessels[0]?.entity_id ?? null,
-    });
+    const st = get();
+    // Pick a default on the first snapshot only. After that, respect the user's
+    // choice — including an explicit deselect (null) — instead of refilling it.
+    const selectedId = st.selectionInitialized
+      ? st.selectedId
+      : (s.selected_entity_id ?? s.vessels[0]?.entity_id ?? null);
+    set({ snapshot: s, selectedId, selectionInitialized: true });
   },
   applyVessel: (v) => {
     const snap = get().snapshot;
