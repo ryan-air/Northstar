@@ -131,7 +131,8 @@ describe('scenario e2e (in-process, isolated fixtures)', () => {
       entity_id: fs ?? 'LIVE-230000001',
       status: 'fail',
     } as never);
-    expect(posted.target).not.toBe(fs);
+    // In synthetic mode (no private recording) the full-stack ship is itself simulated.
+    if (app.useHistoricalLab) expect(posted.target).not.toBe(fs);
     expect(app.simulatedShipIds()).toContain(posted.target);
     // The full-stack recorded ship keeps the nominal demo capture.
     expect(app.getRfLabResult()?.status).not.toBe('fail');

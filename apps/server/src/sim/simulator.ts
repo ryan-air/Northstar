@@ -232,7 +232,11 @@ export class Simulator {
     v.trueLon += (this.rng() - 0.5) * 0.00001;
     v.lat = v.trueLat;
     v.lon = v.trueLon;
-    v.sog_kn = v.def.sog_kn * (0.95 + this.rng() * 0.1);
+    // Speed wanders within ±5% of the route speed but changes at most 0.03 kn/s
+    // (realistic for ships; the old per-tick re-roll tripped the acceleration check).
+    const target = v.def.sog_kn * (0.95 + this.rng() * 0.1);
+    const maxStep = 0.03 * dtS;
+    v.sog_kn += Math.max(-maxStep, Math.min(maxStep, target - v.sog_kn));
   }
 
   private reportedPosition(v: VesselSimState): { lat: number; lon: number } {

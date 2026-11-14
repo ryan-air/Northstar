@@ -2,7 +2,7 @@
  * P4.1 / P4.3 / P4.4 / P3.3 / P3.5 / P5.2 — security fixes and Lab correctness, run
  * against an isolated temp data dir and the frozen eval snapshot.
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -10,6 +10,11 @@ import { bytesToB64, generateKeyPair, generateP256KeyPair, signPayload } from '@
 import type { TelemetryPayload } from '@northstar/contracts';
 import { NorthstarApp } from './app.js';
 import { EVAL_SNAPSHOT_PATH } from './replay/store.js';
+
+// The recorded snapshot is private data kept off the public repo; Lab-replay tests skip
+// without it (security tests below still run on the synthetic fleet).
+const HAS_PRIVATE_REPLAY = existsSync(EVAL_SNAPSHOT_PATH);
+const itReplay = HAS_PRIVATE_REPLAY ? it : it.skip;
 
 describe('security + lab v2', () => {
   let app: NorthstarApp;
@@ -28,7 +33,7 @@ describe('security + lab v2', () => {
 
   afterAll(() => rmSync(dataDir, { recursive: true, force: true }));
 
-  it('uses v2 configs by default and reads the frozen snapshot', () => {
+  itReplay('uses v2 configs by default and reads the frozen snapshot', () => {
     expect(app.pipeline.configVersions).toEqual({ fusion: 'fusion.v2', thresholds: 'thresholds.v2' });
     expect(app.useHistoricalLab).toBe(true);
   });
@@ -115,7 +120,7 @@ describe('security + lab v2', () => {
     expect(cp.tip_hash).toBe(app.audit.tip.hash);
   });
 
-  it('P5.2: ≥200 normal ticks with 0 critical Lab vessels', () => {
+  itReplay('P5.2: ≥200 normal ticks with 0 critical Lab vessels', () => {
     app.setScenario('reset');
     // Until the OSM coastline/ports (P2.1) are installed, the simplified v1 polygons put
     // some berths "inland" (e.g. Vuosaari is missing). Those — and only those — are
@@ -151,7 +156,7 @@ describe('security + lab v2', () => {
     }
   });
 
-  it('P3.5: stale_clock_skew makes ingest reject the target (counter rises)', () => {
+  itReplay('P3.5: stale_clock_skew makes ingest reject the target (counter rises)', () => {
     const before = app.labRejections().stale ?? 0;
     // Injection policy: stale clock goes to a simulated ship (reports every tick), never
     // to the historical full-stack vessel.
@@ -164,7 +169,7 @@ describe('security + lab v2', () => {
     app.setScenario('reset');
   });
 
-  it('P3.3: timeline wrap clears Lab state — no teleport hard alerts on the jump back', () => {
+  itReplay('P3.3: timeline wrap clears Lab state — no teleport hard alerts on the jump back', () => {
     app.setScenario('reset');
     // Jump the clock to just before the end of the timeline, then tick across the wrap.
     (app.lab as unknown as { seekShared(t: number): void }).seekShared(app.lab.timelineEndMs - 4_000);
