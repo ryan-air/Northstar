@@ -16,12 +16,16 @@ import { mmsiFromIdentity, OnboardTrack } from './onboardTrack.js';
 
 const env = (a: string, b: string) => process.env[a] ?? process.env[b];
 const DEVICE_ID = env('NORTHSTAR_DEVICE_ID', 'FLAGSHIP_DEVICE_ID') ?? 'DEV-VESSEL-001';
-const ENTITY_ID = env('NORTHSTAR_ENTITY_ID', 'FLAGSHIP_ENTITY_ID') ?? 'LAB-230685000';
+// If the operator pins an entity we honour it; otherwise device-sim follows
+// whatever vessel the server designated as the Hist Lab signed target (which
+// is data-driven and can change as the replay cache grows).
+const ENTITY_ID_EXPLICIT = env('NORTHSTAR_ENTITY_ID', 'FLAGSHIP_ENTITY_ID');
+let ENTITY_ID = ENTITY_ID_EXPLICIT ?? 'LAB-230685000';
 let keyId = `${DEVICE_ID}-key-1`;
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const REPLAY_PATH =
   process.env.NORTHSTAR_REPLAY_PATH ?? join(REPO_ROOT, 'data/replay/gof_ais.jsonl');
-const MMSI = mmsiFromIdentity(ENTITY_ID, process.env.NORTHSTAR_MMSI);
+let MMSI = mmsiFromIdentity(ENTITY_ID, process.env.NORTHSTAR_MMSI);
 const GNSS_NOISE_METERS = Number(process.env.NORTHSTAR_GNSS_NOISE_METERS ?? 3);
 const defaultKeyDir = existsSync(join(REPO_ROOT, '.northstar/keys'))
   ? join(REPO_ROOT, '.northstar/keys')
@@ -142,6 +146,27 @@ async function refreshDeviceMeta(): Promise<void> {
     }
   } catch {
     /* ignore */
+  }
+}
+
+async function resolveSignedEntity(): Promise<void> {
+  // Align to the server's current Hist Lab signed vessel so we never enroll
+  // under a stale entity (which the server would reject with 409 after it
+  // rebinds the device on startup). An explicit NORTHSTAR_ENTITY_ID wins.
+  if (ENTITY_ID_EXPLICIT) return;
+  try {
+    const res = await apiFetch(`${API}/api/snapshot`);
+    if (!res.ok) return;
+    const snap = (await res.json()) as {
+      lab?: { signed_entity_id?: string | null; fullstack_entity_id?: string | null };
+    };
+    const signed = snap.lab?.signed_entity_id ?? snap.lab?.fullstack_entity_id;
+    if (signed && signed !== ENTITY_ID) {
+      ENTITY_ID = signed;
+      MMSI = mmsiFromIdentity(ENTITY_ID, process.env.NORTHSTAR_MMSI);
+    }
+  } catch {
+    /* fall back to default/env ENTITY_ID */
   }
 }
 
@@ -293,6 +318,7 @@ async function tick(): Promise<void> {
 
 async function start(): Promise<void> {
   await refreshSigner();
+  await resolveSignedEntity();
   await enrolDevice();
   onboardTrack = await OnboardTrack.load({
     path: REPLAY_PATH,
