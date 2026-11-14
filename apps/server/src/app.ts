@@ -1265,7 +1265,10 @@ export class NorthstarApp {
       },
     };
     const vessel = this.pipeline.process(event, nowIso);
-    this.broadcast({ type: 'vessel_update', payload: vessel });
+    this.broadcast({
+      type: 'vessel_update',
+      payload: { ...vessel, origin: vessel.entity_id.startsWith('LIVE-') ? 'live' : 'lab' },
+    });
     this.broadcast({ type: 'snapshot', payload: this.snapshot() });
     return { ok: true, vessel };
   }

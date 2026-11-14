@@ -82,6 +82,11 @@ export const useStore = create<NorthstarStore>((set, get) => ({
   applyVessel: (v) => {
     const snap = get().snapshot;
     if (!snap || !Array.isArray(snap.vessels)) return;
+    // Per-ship updates stream for every feed; only apply those that belong to the current
+    // view (otherwise Lab ships flash on the Live view until the next snapshot drops them).
+    const mode = snap.view_mode ?? 'lab';
+    const origin = v.origin ?? (v.entity_id.startsWith('LIVE-') ? 'live' : 'lab');
+    if (mode !== 'both' && origin !== mode) return;
     const vessels = snap.vessels.some((x) => x.entity_id === v.entity_id)
       ? snap.vessels.map((x) => (x.entity_id === v.entity_id ? v : x))
       : [...snap.vessels, v];
