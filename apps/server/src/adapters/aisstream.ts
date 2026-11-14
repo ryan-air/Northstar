@@ -19,17 +19,18 @@ export interface AisStreamConfig {
  * Returns the observation time — NOT the receive time.
  */
 export function aisStreamObservationTime(
-  timeUtc: string | undefined,
-  aisSecond: number | undefined,
+  timeUtc: unknown,
+  aisSecond: unknown,
   fallbackMs: number,
 ): { ms: number; from: 'ais_second' | 'time_utc' | 'receive_time' } {
   let base = NaN;
-  if (timeUtc) {
+  // Fields come from untrusted network JSON: guard types before using string methods.
+  if (typeof timeUtc === 'string' && timeUtc.length <= 64) {
     const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d+)?/.exec(timeUtc.trim());
     if (m) base = Date.parse(`${m[1]}T${m[2]}${m[3] ? m[3].slice(0, 4) : ''}Z`);
   }
   if (!Number.isFinite(base)) return { ms: fallbackMs, from: 'receive_time' };
-  if (typeof aisSecond === 'number' && aisSecond >= 0 && aisSecond <= 59) {
+  if (typeof aisSecond === 'number' && Number.isInteger(aisSecond) && aisSecond >= 0 && aisSecond <= 59) {
     const d = new Date(base);
     d.setUTCSeconds(aisSecond, 0);
     let ms = d.getTime();

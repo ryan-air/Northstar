@@ -84,3 +84,71 @@ export function wsTokenOk(
   const t = typeof q.token === 'string' ? q.token : undefined;
   return tokenEquals(t, wsToken) || bearerOk(authorization, wsToken);
 }
+
+// ———————————————————————————————————— scoped admin credentials
+
+export const ADMIN_SCOPES = ['scenario', 'rf', 'osnma', 'audit', 'devices', 'demo'] as const;
+export type AdminScope = (typeof ADMIN_SCOPES)[number];
+
+export interface AdminPrincipal {
+  name: string;
+  scopes: Set<AdminScope | '*'>;
+  digest: Buffer;
+}
+
+/**
+ * NORTHSTAR_ADMIN_TOKENS = "name:scope+scope:token;name2:*:token2". Only SHA-256 digests are
+ * kept in memory. The single NORTHSTAR_ADMIN_TOKEN (or loopback demo token) is a '*' principal.
+ */
+export function parseScopedTokens(spec: string | undefined): AdminPrincipal[] {
+  if (!spec?.trim()) return [];
+  return spec
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [name, scopes, ...rest] = entry.split(':');
+      const token = rest.join(':');
+      if (!name || !scopes || !token || token.length < 16) {
+        throw new Error(`NORTHSTAR_ADMIN_TOKENS entry "${name ?? '?'}" must be name:scopes:token (token ≥ 16 chars)`);
+      }
+      const set = new Set<AdminScope | '*'>();
+      for (const sc of scopes.split('+')) {
+        if (sc !== '*' && !(ADMIN_SCOPES as readonly string[]).includes(sc)) {
+          throw new Error(`NORTHSTAR_ADMIN_TOKENS: unknown scope "${sc}" for ${name}`);
+        }
+        set.add(sc as AdminScope | '*');
+      }
+      return { name, scopes: set, digest: digest(token) };
+    });
+}
+
+export type AdminDecision =
+  | { ok: true; principal: string }
+  | { ok: false; status: 401 | 403; error: 'admin_authorization_required' | 'insufficient_scope' };
+
+/** Decide an admin request for `scope`. A null full token with no principals = auth disabled (tests). */
+export function authorizeAdmin(
+  authorization: string | string[] | undefined,
+  scope: AdminScope,
+  fullToken: string | null,
+  principals: AdminPrincipal[],
+): AdminDecision {
+  if (fullToken === null && principals.length === 0) return { ok: true, principal: 'tests' };
+  const h = Array.isArray(authorization) ? authorization[0] : authorization;
+  const given = h?.startsWith('Bearer ') ? h.slice(7) : null;
+  if (given == null) return { ok: false, status: 401, error: 'admin_authorization_required' };
+  if (fullToken !== null && tokenEquals(given, fullToken)) return { ok: true, principal: 'admin' };
+  const g = digest(given);
+  // Compare against every principal (constant work regardless of which one matches).
+  let match: AdminPrincipal | null = null;
+  for (const p of principals) if (timingSafeEqual(g, p.digest) && !match) match = p;
+  if (!match) return { ok: false, status: 401, error: 'admin_authorization_required' };
+  if (!match.scopes.has('*') && !match.scopes.has(scope)) return { ok: false, status: 403, error: 'insufficient_scope' };
+  return { ok: true, principal: match.name };
+}
+
+/** Plain-HTTP device telemetry is accepted only on loopback unless explicitly allowed. */
+export function plaintextTelemetryAllowed(host: string, allowFlag: boolean): boolean {
+  return allowFlag || isLoopbackHost(host);
+}

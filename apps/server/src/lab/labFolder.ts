@@ -41,13 +41,15 @@ export interface LabFolder {
   attestation: AttestationEvidence | null;
   captures: LabCapture[];
   /** Interference windows from the receiver's own SEC-SIG flags (not lab labels). */
+  /** U12 onboard receiver log present (device-sim signs it for this vessel). */
+  hasOnboardLog: boolean;
   receiverEvents: Array<{ kind: 'jamming' | 'spoofing'; startMs: number; endMs: number; maxState: number }>;
   notes: string[];
 }
 
 // ———————————————————————————————————— parsing helpers
 
-function parseCsv(text: string): Record<string, string>[] {
+export function parseCsv(text: string): Record<string, string>[] {
   const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
   if (lines.length === 0) return [];
   const split = (line: string): string[] => {
@@ -259,8 +261,84 @@ function loadDr(dir: string): DrSample[] {
       if (Number.isFinite(v)) speed.set(sec(Date.parse(t)), v);
     }
   }
-  const secs = [...new Set([...heading.keys(), ...speed.keys()])].sort((a, b) => a - b);
-  return secs.map((s) => ({ t: s * 1000, heading_deg: heading.get(s) ?? null, speed_kn: speed.get(s) ?? null }));
+  const yaw = loadImuYawRate(d);
+  const secs = [...new Set([...heading.keys(), ...speed.keys(), ...yaw.keys()])].sort((a, b) => a - b);
+  // Fallbacks for dropouts: heading = last gyrocompass heading + integrated IMU yaw rate;
+  // speed = last speed-log value held for ≤ 120 s.
+  const out: DrSample[] = [];
+  let lastHdg: number | null = null;
+  let lastSpd: number | null = null;
+  let lastSpdT = -Infinity;
+  let lastGyroT = -Infinity;
+  // Measured on lab data: IMU-integrated heading drifts ~0.8°/min vs the gyrocompass
+  // (≈4° over 5 min), so the IMU fallback is limited to 120 s after the last gyro heading.
+  const IMU_HOLD_S = 120;
+  for (const s of secs) {
+    const h = heading.get(s);
+    let src: 'gyro' | 'imu' | undefined;
+    if (h != null) {
+      lastHdg = h;
+      lastGyroT = s;
+      src = 'gyro';
+    } else if (lastHdg != null && yaw.has(s) && s - lastGyroT <= IMU_HOLD_S) {
+      lastHdg = (lastHdg + yaw.get(s)! + 360) % 360;
+      src = 'imu';
+    } else lastHdg = null;
+    const v = speed.get(s);
+    if (v != null) {
+      lastSpd = v;
+      lastSpdT = s;
+    }
+    out.push({
+      t: s * 1000,
+      heading_deg: src ? lastHdg : null,
+      speed_kn: v ?? (lastSpd != null && s - lastSpdT <= 120 ? lastSpd : null),
+      ...(src ? { heading_src: src } : {}),
+    });
+  }
+  return out;
+}
+
+/**
+ * 1 Hz yaw rate (deg/s, body z-down) from the 50 Hz IMU: gyro rotated into the vessel body
+ * frame with the spec's mounting matrix, averaged per second. Empty if absent or disabled
+ * (NORTHSTAR_LAB_IMU=0).
+ */
+function loadImuYawRate(d: string): Map<number, number> {
+  const out = new Map<number, number>();
+  if (process.env.NORTHSTAR_LAB_IMU === '0') return out;
+  const f = findFile(d, /^U4_imu_.*hz.*\.csv$/);
+  const specPath = join(d, 'U4_imu_spec.json');
+  if (!f || !existsSync(specPath)) return out;
+  const spec = JSON.parse(readFileSync(specPath, 'utf8')) as { mounting_R_imu_to_body?: number[][] };
+  const R = spec.mounting_R_imu_to_body;
+  if (!R || R.length !== 3) return out;
+  const r2 = R[2]!;
+  const lines = readFileSync(f, 'utf8').split('\n');
+  const h = lines[0]!.split(',');
+  const iw = h.indexOf('gps_week');
+  const it = h.indexOf('time_gps_s');
+  const ix = h.indexOf('gx_radps');
+  const iy = h.indexOf('gy_radps');
+  const iz = h.indexOf('gz_radps');
+  if ([iw, it, ix, iy, iz].some((i) => i < 0)) return out;
+  const GPS_EPOCH_S = Date.UTC(1980, 0, 6) / 1000;
+  const LEAP_S = 18;
+  const sum = new Map<number, [number, number]>();
+  for (let i = 1; i < lines.length; i++) {
+    const c = lines[i]!.split(',');
+    if (c.length < h.length) continue;
+    const utc = GPS_EPOCH_S + Number(c[iw]) * 604_800 + Number(c[it]) - LEAP_S;
+    const zb = r2[0]! * Number(c[ix]) + r2[1]! * Number(c[iy]) + r2[2]! * Number(c[iz]);
+    if (!Number.isFinite(utc) || !Number.isFinite(zb)) continue;
+    const s = Math.floor(utc);
+    const a = sum.get(s) ?? [0, 0];
+    a[0] += zb;
+    a[1] += 1;
+    sum.set(s, a);
+  }
+  for (const [s, [z, n]] of sum) out.set(s, ((z / n) * 180) / Math.PI);
+  return out;
 }
 
 function loadTargetObs(dir: string, mmsi: number): TargetObservation[] {
@@ -460,6 +538,7 @@ export function loadLabFolder(dir: string): LabFolder | null {
     attestation: loadAttestation(dir, notes),
     captures: loadCaptures(dir, entityId),
     receiverEvents: receiverEvents(dir),
+    hasOnboardLog: !!findFile(join(dir, 'U12_onboard_gnss'), /^U12_position_.*\.csv$/),
     notes,
   };
 }

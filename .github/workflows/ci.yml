@@ -19,6 +19,14 @@ jobs:
       - run: rm -rf packages/*/dist && npm run build
       - run: npm run typecheck
       - run: npm test
+      # Heavier seeded fuzzing of every untrusted-input boundary, plus a CycloneDX SBOM.
+      - run: npm run fuzz
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run sbom
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
       # Lab-return importer self-test and the eval harness need private data that is kept
       # off the public repo; they run only where that data is present (e.g. a private runner).
       - uses: actions/setup-python@v5

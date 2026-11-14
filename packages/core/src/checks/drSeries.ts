@@ -12,6 +12,8 @@ export interface DrSample {
   t: number; // epoch ms
   heading_deg: number | null;
   speed_kn: number | null;
+  /** Where the heading came from: gyrocompass, or IMU yaw rate integrated across a gap. */
+  heading_src?: 'gyro' | 'imu';
 }
 
 export interface DrSeriesConfig {
@@ -78,10 +80,13 @@ export function deadReckon(
     if (segEnd - s.t > maxGapMs) return null;
     if (segEnd > tPrev) {
       // Hold the last valid heading/speed across short dropouts (bounded by maxGapS above).
-      if (s.heading_deg != null) lastHdg = s.heading_deg;
-      if (s.speed_kn != null) lastSpd = s.speed_kn;
+      // Treat anything that is not a finite number as missing (inputs are not trusted).
+      const sh = typeof s.heading_deg === 'number' && Number.isFinite(s.heading_deg) ? s.heading_deg : null;
+      const ss = typeof s.speed_kn === 'number' && Number.isFinite(s.speed_kn) && s.speed_kn >= 0 && s.speed_kn < 100 ? s.speed_kn : null;
+      if (sh != null) lastHdg = sh;
+      if (ss != null) lastSpd = ss;
       if (lastHdg == null || lastSpd == null) return null;
-      if (s.heading_deg == null || s.speed_kn == null) {
+      if (sh == null || ss == null) {
         if (s.t - lastValidT > maxGapMs) return null;
       } else lastValidT = s.t;
       const hdg = lastHdg;
@@ -108,7 +113,15 @@ export function checkDrSeries(
   config: DrSeriesConfig = DEFAULT_DR_SERIES,
   /** False when independent evidence contradicts this fix: it must not become an anchor. */
   canAnchor = true,
+  /**
+   * Independent position fix (e.g. radar) at or before this report. When newer than the
+   * stored anchor it becomes the anchor, so the reference never follows a drifting track.
+   */
+  independentAnchor: DrAnchor | null = null,
 ): { result: CheckResult; anchor: DrAnchor | null } {
+  if (independentAnchor && independentAnchor.t <= Date.parse(current.source_timestamp) && (!anchor || independentAnchor.t > anchor.t)) {
+    anchor = independentAnchor;
+  }
   const t = Date.parse(current.source_timestamp);
   const here: DrAnchor = { t, lat: current.position.lat, lon: current.position.lon };
   const base = {
@@ -175,6 +188,7 @@ export function checkDrSeries(
   const z = resid / sigma;
   const status: CheckResult['status'] = z <= 3 ? 'pass' : z <= 6 ? 'warning' : 'fail';
   const elapsed = (t - anchor.t) / 1000;
+  const anchorKind = anchor === independentAnchor ? 'independent (radar) fix' : 'trusted fix';
   return {
     // Only a passing fix becomes the next anchor.
     anchor: status === 'pass' ? here : anchor,
@@ -185,8 +199,8 @@ export function checkDrSeries(
       severity: status === 'fail' ? 'high' : status === 'warning' ? 'medium' : 'none',
       explanation:
         status === 'pass'
-          ? `Dead reckoning from the last trusted fix (${elapsed.toFixed(0)} s, ${(dr.dist_m / 1000).toFixed(1)} km) agrees within ${resid.toFixed(0)} m.`
-          : `Dead reckoning from the last trusted fix (${elapsed.toFixed(0)} s ago, gyro heading + speed log, no GNSS) puts the vessel ${(resid / 1000).toFixed(resid > 10_000 ? 0 : 2)} km from its reported position (${z.toFixed(1)}σ).`,
+          ? `Dead reckoning from the last ${anchorKind} (${elapsed.toFixed(0)} s, ${(dr.dist_m / 1000).toFixed(1)} km) agrees within ${resid.toFixed(0)} m.`
+          : `Dead reckoning from the last ${anchorKind} (${elapsed.toFixed(0)} s ago, gyro heading + speed log, no GNSS) puts the vessel ${(resid / 1000).toFixed(resid > 10_000 ? 0 : 2)} km from its reported position (${z.toFixed(1)}σ).`,
       quality: 0.9,
       freshness: 1,
       reliability: 0.85,
@@ -195,6 +209,7 @@ export function checkDrSeries(
         sigma_m: Math.round(sigma),
         z: Math.round(z * 10) / 10,
         anchor_age_s: Math.round(elapsed),
+        anchor_source: anchor === independentAnchor ? 'independent' : 'ais',
         dr_distance_m: Math.round(dr.dist_m),
       },
       hard_alert: status === 'fail',

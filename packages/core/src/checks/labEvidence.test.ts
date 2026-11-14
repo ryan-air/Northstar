@@ -112,3 +112,35 @@ describe('evidence classes for lab inputs', () => {
     expect(classifyCheckEvidence('rf_lab', { event, rfLab: rf })).toBe('recorded');
   });
 });
+
+import { assessSilence } from './silence.js';
+
+describe('clock-driven alerts (no report needed)', () => {
+  const g = (ind: 'none' | 'suspected_jamming' | 'suspected_spoofing', tS: number) => ({
+    entity_id: 'V1', observed_at: new Date(T0 + tS * 1000).toISOString(), satellite_count: 9, c_n0_dbhz: null,
+    hdop: null, interference_indicator: ind, missing_inputs: [],
+  });
+  it('raises jamming / spoofing from receiver flags', () => {
+    expect(assessSilence({ nowMs: T0 + 5000, lastReport: null, gnss: g('suspected_jamming', 0) as never, observations: [] }).map((f) => f.kind)).toEqual(['gnss_jamming']);
+    expect(assessSilence({ nowMs: T0 + 60_000, lastReport: null, gnss: g('suspected_spoofing', 0) as never, observations: [] })).toEqual([]); // stale flag
+  });
+  it('AIS silence needs a long gap relative to cadence AND an independent fix showing movement', () => {
+    const last = { t: T0, lat: 60, lon: 25 };
+    const far = [{ observed_at: new Date(T0 + 900_000).toISOString(), lat: 60.1, lon: 25, accuracy_m: 50, provider_id: 'radar' }];
+    const near = [{ ...far[0]!, lat: 60.001 }];
+    expect(assessSilence({ nowMs: T0 + 900_000, lastReport: last, gnss: null, observations: far, typicalIntervalS: 100 }).map((f) => f.kind)).toEqual(['ais_silent_while_tracked']);
+    expect(assessSilence({ nowMs: T0 + 900_000, lastReport: last, gnss: null, observations: near, typicalIntervalS: 100 })).toEqual([]);
+    expect(assessSilence({ nowMs: T0 + 900_000, lastReport: last, gnss: null, observations: far, typicalIntervalS: 300 })).toEqual([]); // 4×300 s > gap
+  });
+});
+
+describe('radar-anchored dead reckoning', () => {
+  it('uses a newer independent fix as the anchor, so a drifting track cannot drag it', () => {
+    const a = checkDrSeries(ev(60, 25, 0), series, null, 'x').anchor;
+    const radar = along(200);
+    const drifted = along(240);
+    const r = checkDrSeries(ev(drifted.lat + 0.01, drifted.lon, 240), series, a, 'x', undefined, true, { t: T0 + 200_000, lat: radar.lat, lon: radar.lon });
+    expect(r.result.evidence?.anchor_source).toBe('independent');
+    expect(r.result.status).toBe('fail');
+  });
+});

@@ -46,6 +46,8 @@ import {
 } from './fixtures/loadFixtures.js';
 import { LiveFeedService } from './live/liveFeed.js';
 import { HistoricalLab } from './replay/historicalLab.js';
+import { EnrolTokenStore } from './security/enrolTokens.js';
+import { isLoopbackHost } from './security/adminAuth.js';
 import { atOrBefore, labFolderPath, loadLabFolder, type LabFolder } from './lab/labFolder.js';
 import { HistoricalRecorder } from './replay/recorder.js';
 import { SecurityForensics } from './security/forensics.js';
@@ -696,6 +698,8 @@ export class NorthstarApp {
     if (!lab) return;
     this.pipeline.setDrSeries(lab.entityId, lab.dr);
     this.pipeline.setTargetObservations(lab.entityId, lab.targetObs);
+    // The device-sim signs the lab's independent onboard receiver log for this vessel.
+    this.pipeline.setOnboardIndependent(lab.entityId, lab.hasOnboardLog);
     if (lab.attestation) this.pipeline.setAttestation(lab.entityId, lab.attestation);
   }
 
@@ -711,6 +715,9 @@ export class NorthstarApp {
     ) {
       this.pipeline.ingestSecondary(lab.secondaryAis[this.labSecondaryIdx]!);
       this.labSecondaryIdx++;
+    }
+    for (const alert of this.pipeline.checkSilence(lab.entityId, new Date(tMs).toISOString())) {
+      this.broadcast({ type: 'alert', payload: alert });
     }
     const cap = lab.captures.find((c) => tMs >= c.startMs - 60_000 && tMs <= c.endMs + 60_000);
     this.pipeline.setRfLab(lab.entityId, cap ? cap.result : null);
@@ -1329,8 +1336,27 @@ export class NorthstarApp {
     return this.enrolTokenValue;
   }
 
+  /** One-time per-vessel enrolment tokens (hashed, in the runtime data dir). */
+  private enrolTokens: EnrolTokenStore | null = null;
+  private enrolTokenStore(): EnrolTokenStore {
+    return (this.enrolTokens ??= new EnrolTokenStore(
+      this.dataDir ? join(this.dataDir, 'enrol_tokens.json') : join(REPO_ROOT, '.northstar/enrol_tokens.json'),
+    ));
+  }
+
+  issueEnrolToken(entityId: string, ttlS: number, issuedBy: string): { token: string; expires_at: string } {
+    const r = this.enrolTokenStore().issue(entityId, ttlS, issuedBy);
+    this.audit.append('enrol_token_issued', { entity_id: entityId, expires_at: r.expires_at, issued_by: issuedBy });
+    return r;
+  }
+
+  /** The shared enrol token is accepted only on loopback binds (or when explicitly allowed). */
+  sharedEnrolTokenAllowed(): boolean {
+    return isLoopbackHost(this.env.host) || process.env.NORTHSTAR_ALLOW_SHARED_ENROL_TOKEN === 'true';
+  }
+
   private tokenMatches(candidate: string | undefined): boolean {
-    if (!candidate) return false;
+    if (!candidate || !this.sharedEnrolTokenAllowed()) return false;
     const a = Buffer.from(candidate);
     const b = Buffer.from(this.enrolToken());
     return a.length === b.length && timingSafeEqual(a, b);
@@ -1344,7 +1370,10 @@ export class NorthstarApp {
     body: { device_id?: string; entity_id?: string; public_key_b64?: string; replace?: boolean },
     auth: { admin: boolean; enrolToken?: string },
   ): Promise<{ status: number; body: Record<string, unknown> }> {
-    if (!auth.admin && !this.tokenMatches(auth.enrolToken)) {
+    const oneTime =
+      !auth.admin && !this.tokenMatches(auth.enrolToken) && !!body.entity_id &&
+      this.enrolTokenStore().consume(auth.enrolToken, body.entity_id);
+    if (!auth.admin && !this.tokenMatches(auth.enrolToken) && !oneTime) {
       this.forensics.push(
         'enrolment_rejected',
         'Enrolment rejected — no admin bearer or valid X-Northstar-Enrol-Token',

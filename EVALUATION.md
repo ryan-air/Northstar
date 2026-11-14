@@ -29,7 +29,9 @@ raw AIS stream); vessel metadata is as of fetch time, not per report.
 | **v2 + OSM land** | calibration | 1.6% | 0.0% | 1.6% | 0 | 3 / 150 |
 | **v2 + OSM land** | **held-out** | **3.2%** | **1.6%** | **1.6%** | **0** | **27 / 156** |
 | **v2 + OSM, ships only** | calibration | 0.6% | 0.0% | 0.5% | 0 | 3 / 150 |
-| **v2 + OSM, ships only** | **held-out** | **1.6%** | **1.6%** | **0.0%** | **0** | **25 / 153** |
+| v2 + OSM, ships only (before trapezoid drift prediction) | held-out | 1.6% | 1.6% | 0.0% | 0 | 25 / 153 |
+| **v2 + OSM + trapezoid drift prediction** | **held-out** | **2.2%** | **0.6%** | **1.6%** | **0** | **20 / 156** |
+| **…same, ships only** | **held-out** | **0.6%** | **0.6%** | **0.0%** | **0** | **18 / 153** |
 
 - The audit baseline (39% suspicious, kinematics 27% warning) was **not reproduced exactly**;
   the raw-recording reproduction gives 23.8% / 91.8% warn+. The kinematics warnings are mostly
@@ -43,7 +45,11 @@ raw AIS stream); vessel metadata is as of fetch time, not per report.
   Kunda. With edge distance + hull tolerance this matters less, but port polygons are still a
   data gap.
 - Identity flags 0.5% of events — all TESTSHIP (MMSI 299999999, MID 299 unallocated).
-- **Ships only: 1.6% held-out** (plan target ≤2% met, gated in CI). Non-vessel transponders are
+- **Ships only: 0.6% held-out** after the v2 drift check switched to the average of the previous and
+  current reported velocity (`cusum.prediction = trapezoid`); 1.6% before (plan target ≤2%, gated in CI).
+  This removed false drift alarms in turns and speed changes between sparse reports. Cost: one
+  fewer detection out of 10 on each of the four hardest attacks (100 m step 20→10%, drift 0.2/0.5
+  m/s 20→10%, drift 1 m/s 30→20%) — inside the 95% ranges, but reported. Non-vessel transponders are
   labelled `transponder_kind = non_vessel_transponder` (non-ship MMSI type, or fixed within 100 m
   on land for ≥30 min) and reported separately; their alerts still fire. Totals including them
   stay in the table (3.2%).
@@ -67,9 +73,9 @@ were already flagged in the 30 min before the attack (v1's recall is inflated by
 |---|---|---|---|---|---|
 | Teleport inland | 100% (72–100) | 0 s | kinematics, geographic | 100% | 100% |
 | Teleport open sea (15 km) | 90% (60–98) | 0 s | kinematics | 90% | 20% |
-| Step offset 100 m | 20% (6–51) | 222 s | kinematics | 0% | 0% |
+| Step offset 100 m | 10% (2–40); was 20% before trapezoid | 222 s | kinematics | 0% | 0% |
 | Step offset 300 / 500 / 1000 m | 90% / 90% / 90% | 0 s | kinematics | 0 / 10 / 50% | 0% |
-| Drift 0.2 / 0.5 / 1 m/s | 20% / 20% / 30% | 222 s | kinematics | 0% | 0% |
+| Drift 0.2 / 0.5 / 1 m/s | 10% / 10% / 20%; were 20 / 20 / 30% | 222 s | kinematics | 0% | 0% |
 | Drift 2 m/s | 90% (60–98) | 178 s | kinematics | 0% | 0% |
 | Area pull (≥4 vessels) | 98.9% (96–100, n=181) | 76 s | kinematics, fleet_coherence | 97.2% | 28.2% |
 | Coherent area offset (3 km) | 98.1% (95–99, n=155) | 76 s | kinematics, fleet_coherence | 89% | 9% |
@@ -93,6 +99,17 @@ Honest reading:
 `npm run record:stream` records the Digitraffic real-time stream: first 25 min gave 22,772 positions
 from 318 vessels, median 10 s between reports per vessel (eval-v1: 1–20 min). A frozen eval-v2
 from this stream is the next step for slow-drift / 100 m-offset recall.
+
+## Independent-sensor evidence (lab return; data kept private)
+
+The lab return is not in this repository. With it present locally (`data_lab/`), its vessel
+becomes the full-stack Hist Lab ship and `scripts/lab/case-study.ts` reports per-event detection
+(AIS only vs with independent evidence) into the gitignored `.northstar/` folder. Checks it feeds:
+independent radar/SAR observations (`neighbors`), GNSS-free dead reckoning from heading + speed
+log with IMU gyro fallback, anchored on radar fixes (`imu`), receiver diagnostics, recorded
+multi-element RF captures (`rf_lab`/`spatial_aoa`), a second AIS network, the independently signed
+onboard receiver (`signed_vs_ais`), and clock-driven jamming / spoofing-flag / AIS-silence alerts.
+Synthetic OSNMA and attestation inputs are classed `simulated`.
 
 ## Evidence classes
 

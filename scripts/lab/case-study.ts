@@ -14,6 +14,28 @@ import { dirname, isAbsolute, join } from 'node:path';
 import type { TrustAssessment } from '@northstar/contracts';
 import { atOrBefore, labFolderPath, loadLabFolder } from '../../apps/server/src/lab/labFolder.js';
 import { ROOT, makeEngine, recordToEvent, recordTime } from '../eval/lib.js';
+import { haversineM } from '@northstar/core';
+import { readdirSync, readFileSync } from 'node:fs';
+
+function loadOnboardCsv(lab: { dir: string }): Array<{ t: number; lat: number; lon: number }> {
+  const d = join(lab.dir, 'U12_onboard_gnss');
+  let f: string | undefined;
+  try {
+    f = readdirSync(d).find((n) => /^U12_position_.*\.csv$/.test(n));
+  } catch {
+    return [];
+  }
+  if (!f) return [];
+  const lines = readFileSync(join(d, f), 'utf8').split('\n').filter((l) => l.trim());
+  const h = lines[0]!.split(',');
+  const [it, ila, ilo] = ['time_utc', 'lat', 'lon'].map((n) => h.indexOf(n));
+  return lines
+    .slice(1)
+    .map((l) => l.split(','))
+    .filter((c) => c[ila!])
+    .map((c) => ({ t: Date.parse(c[it!]!), lat: Number(c[ila!]), lon: Number(c[ilo!]) }))
+    .filter((x) => Number.isFinite(x.t) && Number.isFinite(x.lat));
+}
 
 const argOut = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1]! : '.northstar/lab_case_study.json';
 const OUT = isAbsolute(argOut) ? argOut : join(ROOT, argOut);
@@ -64,8 +86,20 @@ function run(withLab: boolean, offset: Offset | null = null) {
     if (lab.attestation) p.setAttestation(id, lab.attestation);
   }
   const rows: Row[] = [];
+  const alerts: Array<{ t: number; kind: string; severity: string }> = [];
   let secIdx = 0;
+  let clock = lab.windowMs[0];
+  // Clock-driven alerts (jamming / spoofing flags / AIS silence) between reports, every 10 s.
+  const advanceClock = (until: number) => {
+    if (!withLab) return;
+    for (; clock < until; clock += 10_000) {
+      const g = atOrBefore(lab.gnss, (x) => Date.parse(x.observed_at), clock, 2000);
+      if (g) p.setGnss(g);
+      for (const al of p.checkSilence(id, new Date(clock).toISOString())) alerts.push({ t: clock, kind: al.kind, severity: al.severity });
+    }
+  };
   for (const r of lab.primaryAis) {
+    advanceClock(recordTime(r));
     const t = recordTime(r);
     const [olat, olon] = applyOffset(r.lat, r.lon, t, offset);
     const ev = { ...recordToEvent({ ...r, lat: olat, lon: olon }, {}), entity_id: id };
@@ -101,7 +135,8 @@ function run(withLab: boolean, offset: Offset | null = null) {
       verified_coverage: s.trust.verified_evidence_coverage,
     });
   }
-  return { lab, rows };
+  advanceClock(lab.windowMs[1]);
+  return { lab, rows, alerts };
 }
 
 function main(): void {
@@ -204,7 +239,40 @@ function main(): void {
     };
   });
 
+  // Independent onboard receiver (U12) vs AIS, at each AIS report time.
+  const u12 = (() => {
+    const d: Array<{ t: number; m: number }> = [];
+    const track = loadOnboardCsv(lab);
+    for (const r of lab.primaryAis) {
+      const tt = recordTime(r);
+      const o = atOrBefore(track, (x) => x.t, tt, 3000);
+      if (o) d.push({ t: tt, m: haversineM(r.lat, r.lon, o.lat, o.lon) });
+    }
+    const med = (xs: number[]) => (xs.length ? Math.round([...xs].sort((x, y) => x - y)[xs.length >> 1]!) : null);
+    const spoof = events.filter((e) => e.kind === 'spoofing' && e.maxState >= 3);
+    const inS = d.filter((x) => spoof.some((e) => x.t >= e.startMs && x.t <= e.endMs));
+    const outS = d.filter((x) => !spoof.some((e) => x.t >= e.startMs - 600_000 && x.t <= e.endMs + 600_000));
+    return {
+      reports_compared: d.length,
+      median_ais_to_onboard_m_during_spoof: med(inS.map((x) => x.m)),
+      median_ais_to_onboard_m_normal: med(outS.map((x) => x.m)),
+      reading: 'If small during the spoof, the onboard receiver was spoofed too: a second GNSS receiver is not independent evidence against wide-area spoofing.',
+    };
+  })();
+  const alertSummary = events.map((e) => {
+    const inWin = b.alerts.filter((x) => x.t >= e.startMs - 30_000 && x.t <= e.endMs + 120_000);
+    return {
+      event: `${e.kind} ${hhmmss(e.startMs)}–${hhmmss(e.endMs)}`,
+      alerts: inWin.map((x) => `${hhmmss(x.t)} ${x.kind}`),
+      first_alert_delay_s: inWin.length ? Math.round((inWin[0]!.t - e.startMs) / 1000) : null,
+    };
+  });
+  const alertsOutside = b.alerts.filter((x) => !events.some((e) => x.t >= e.startMs - 30_000 && x.t <= e.endMs + 120_000));
+
   const result = {
+    clock_alerts_per_event: alertSummary,
+    clock_alerts_outside_events: alertsOutside.map((x) => `${hhmmss(x.t)} ${x.kind}`),
+    onboard_receiver_vs_ais: u12,
     counterfactual_consistent_fake_track: counterfactual,
     vessel: { entity_id: lab.entityId, name: lab.name, reports: lab.primaryAis.length },
     window: `${new Date(lab.windowMs[0]).toISOString()} – ${new Date(lab.windowMs[1]).toISOString()}`,
@@ -246,6 +314,10 @@ function main(): void {
   for (const c of counterfactual) {
     console.log(`  [${c.model}] ${c.offset_m} m: AIS only ${c.ais_only.flagged}/${c.ais_only.reports_at_full_offset} flagged; with lab ${c.with_lab.flagged}/${c.with_lab.reports_at_full_offset} (first ${c.with_lab.first_flag_after_start_s ?? '—'} s after start; failing: ${c.with_lab.checks.join(', ') || 'none'}; warning: ${c.with_lab.warning_checks.join(', ') || 'none'})`);
   }
+  console.log('\nClock-driven alerts (no position report needed):');
+  for (const a2 of alertSummary) console.log(`  ${a2.event}: ${a2.alerts.join(', ') || 'none'}`);
+  console.log(`  outside events: ${alertsOutside.length}`);
+  console.log(`\nOnboard receiver vs AIS: median ${u12.median_ais_to_onboard_m_during_spoof} m during spoof, ${u12.median_ais_to_onboard_m_normal} m normal (${u12.reports_compared} reports)`);
   const fa = result.false_alarms_outside_events;
   console.log(`\nOutside events: AIS only ${fa.ais_only.flagged}/${fa.ais_only.reports} flagged; with lab ${fa.with_lab.flagged}/${fa.with_lab.reports} flagged`);
   console.log(`\nwrote ${OUT}`);

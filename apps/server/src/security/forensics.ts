@@ -15,7 +15,8 @@ export type SecurityEventKind =
   | 'challenge_issued'
   | 'challenge_rejected'
   | 'ingest_rejected'
-  | 'enrolment_rejected';
+  | 'enrolment_rejected'
+  | 'admin_denied';
 
 export interface SecurityEvent {
   id: string;

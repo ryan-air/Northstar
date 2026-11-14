@@ -2,7 +2,7 @@
  * Onboard gateway simulator — signs telemetry and POSTs to Northstar.
  * Follows Hist Lab signed entity; issues/embeds challenge nonces; optional mTLS + PKCS#11.
  */
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import https from 'node:https';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +28,21 @@ const REPLAY_PATH =
   process.env.NORTHSTAR_REPLAY_PATH ??
   (existsSync(RUNTIME_REPLAY) ? RUNTIME_REPLAY : join(REPO_ROOT, 'data/replay/gof_ais.jsonl'));
 /** P4.1: enrolment token written by the server on first run. */
+const LAB_DIR = process.env.NORTHSTAR_LAB_DIR ?? join(REPO_ROOT, 'data_lab');
+
+/** U12 onboard log path when the lab return's vessel matches `mmsi`, else null. */
+function findLabOnboardLog(mmsi: number): string | null {
+  try {
+    const platform = JSON.parse(readFileSync(join(LAB_DIR, 'U0_platform', 'U0_platform.json'), 'utf8')) as { mmsi?: number };
+    if (platform.mmsi !== mmsi) return null;
+    const dir = join(LAB_DIR, 'U12_onboard_gnss');
+    const f = readdirSync(dir).find((n) => /^U12_position_.*\.csv$/.test(n));
+    return f ? join(dir, f) : null;
+  } catch {
+    return null;
+  }
+}
+
 const ENROL_TOKEN_PATH = process.env.NORTHSTAR_ENROL_TOKEN_PATH ?? join(DATA_DIR_ABS, 'enrol.token');
 /** P3.2: legacy wall-clock playhead (independent of the Lab clock). */
 const LEGACY_CLOCK = process.env.NORTHSTAR_DEVICE_LEGACY_CLOCK === 'true';
@@ -365,11 +380,17 @@ async function start(): Promise<void> {
     }
   }
   await enrolDevice();
-  onboardTrack = await OnboardTrack.load({
-    path: REPLAY_PATH,
-    mmsi: MMSI,
-    noiseMeters: GNSS_NOISE_METERS,
-  });
+  // Lab return (private, gitignored): if its vessel is ours, sign the independent onboard
+  // receiver log (U12) instead of a noisy copy of the AIS track.
+  const labOnboard = findLabOnboardLog(MMSI);
+  onboardTrack = labOnboard
+    ? OnboardTrack.loadCsv(labOnboard, MMSI)
+    : await OnboardTrack.load({
+        path: REPLAY_PATH,
+        mmsi: MMSI,
+        noiseMeters: GNSS_NOISE_METERS,
+      });
+  if (labOnboard) console.log(`[device-sim] signing the lab onboard receiver log for MMSI ${MMSI}`);
   console.log(
     `[device-sim] ${DEVICE_ID}@${ENTITY_ID} using onboard MMSI ${MMSI}; posting to ${SERVER} every ${INTERVAL_MS}ms (gnss_noise=${GNSS_NOISE_METERS}m, mtls=${!!mtlsAgent}, backend=${SIGNER_BACKEND})`,
   );

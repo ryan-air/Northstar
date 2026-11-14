@@ -21,6 +21,7 @@ import {
   stampEvidenceClass,
   createTransponderKindState,
   checkDrSeries,
+  assessSilence,
   checkTargetObservation,
   type DrAnchor,
   type DrSample,
@@ -83,6 +84,10 @@ interface EntityRuntime {
   drSeries?: DrSample[];
   drAnchor?: DrAnchor | null;
   targetObs?: TargetObservation[];
+  /** Signed onboard track comes from an independent receiver (lab return), not an AIS copy. */
+  onboardIndependent?: boolean;
+  /** Silence/jamming episodes currently alerted (one alert per episode). */
+  silenceActive?: Map<string, number>;
   lastEvent?: PositionEvent;
   previousEvent?: PositionEvent;
   lastAisEvent?: PositionEvent;
@@ -165,6 +170,62 @@ export class TrustPipeline {
     const rt = this.ensure(entityId);
     rt.drSeries = series ?? undefined;
     rt.drAnchor = null;
+  }
+
+  /**
+   * Clock-driven alerts that need no new report: receiver jamming/spoofing flags and AIS
+   * silence while an independent sensor still tracks the vessel. One alert per episode.
+   */
+  checkSilence(entityId: string, nowIso: string): AlertEvent[] {
+    const rt = this.entities.get(entityId);
+    if (!rt) return [];
+    const last = rt.lastAisEvent ?? null;
+    const findings = assessSilence({
+      nowMs: Date.parse(nowIso),
+      lastReport: last
+        ? { t: Date.parse(last.source_timestamp), lat: last.position.lat, lon: last.position.lon }
+        : null,
+      gnss: rt.gnss ?? null,
+      observations: rt.targetObs ?? [],
+      typicalIntervalS: (() => {
+        const ts = rt.track.slice(-11).map((p) => Date.parse(p.t)).filter(Number.isFinite);
+        const gaps = ts.slice(1).map((x, i) => (x - ts[i]!) / 1000).filter((g) => g > 0).sort((a, b) => a - b);
+        return gaps.length >= 3 ? gaps[gaps.length >> 1]! : null;
+      })(),
+    });
+    // One alert per episode; an episode closes 120 s after its condition was last seen,
+    // so an intermittent receiver flag does not re-alert every few seconds.
+    const nowMs = Date.parse(nowIso);
+    const active = (rt.silenceActive ??= new Map());
+    for (const [k, last] of [...active]) if (nowMs - last > 120_000) active.delete(k);
+    const fresh: AlertEvent[] = [];
+    for (const f of findings) {
+      const seen = active.has(f.kind);
+      active.set(f.kind, nowMs);
+      if (seen) continue;
+      const a: AlertEvent = {
+        id: randomUUID(),
+        entity_id: entityId,
+        kind: f.kind,
+        severity: f.severity,
+        title: f.title,
+        explanation: f.explanation,
+        trust_score_before: rt.trust?.trust_score ?? null,
+        trust_score_after: rt.trust?.trust_score ?? null,
+        check_ids: f.kind === 'ais_silent_while_tracked' ? ['neighbors'] : ['gnss_diagnostics'],
+        observed_at: nowIso,
+        evidence_refs: [],
+        hard: f.severity === 'critical',
+      };
+      this.pushAlert(a);
+      fresh.push(a);
+    }
+    return fresh;
+  }
+
+  /** Mark the signed onboard track for this vessel as an independent receiver (lab return). */
+  setOnboardIndependent(entityId: string, independent: boolean): void {
+    this.ensure(entityId).onboardIndependent = independent;
   }
 
   /** Independent observations of this vessel (radar/SAR), sorted by time (lab return). */
@@ -282,7 +343,18 @@ export class TrustPipeline {
     // Recorded gyro-heading + speed-log series (lab return): GNSS-independent dead reckoning.
     let imuResult = imuR.result;
     if (rt.drSeries && srcKey !== 'device_telemetry') {
-      const drr = checkDrSeries(kinEvent, rt.drSeries, rt.drAnchor ?? null, nowIso, undefined, neighbors.status !== 'fail');
+      // Latest independent (radar/SAR) fix at or before this report, ≤ 60 s old.
+      let indep: DrAnchor | null = null;
+      if (rt.targetObs) {
+        const tk = Date.parse(kinEvent.source_timestamp);
+        for (let i = rt.targetObs.length - 1; i >= 0; i--) {
+          const ot = Date.parse(rt.targetObs[i]!.observed_at);
+          if (ot > tk) continue;
+          if (tk - ot <= 60_000) indep = { t: ot, lat: rt.targetObs[i]!.lat, lon: rt.targetObs[i]!.lon };
+          break;
+        }
+      }
+      const drr = checkDrSeries(kinEvent, rt.drSeries, rt.drAnchor ?? null, nowIso, undefined, neighbors.status !== 'fail', indep);
       rt.drAnchor = drr.anchor;
       imuResult = drr.result;
     }
@@ -385,7 +457,7 @@ export class TrustPipeline {
       osnma: rt.osnma ?? null,
       attestation: rt.attestation ?? null,
       rfLab: rt.rfLab ?? null,
-      onboardTrackIsAisCopy: true,
+      onboardTrackIsAisCopy: !rt.onboardIndependent,
     });
 
     const prevScore = rt.trust?.trust_score ?? null;

@@ -76,3 +76,6 @@ data/fixtures/eval_pipeline_metrics.json
 
 # Lab return from the lab (private)
 data_lab/
+
+# Generated SBOM (CI artifact)
+sbom.cdx.json

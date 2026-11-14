@@ -22,3 +22,4 @@ export * from './checks/fleetCoherenceV2.js';
 export * from './checks/identity.js';
 export * from './checks/transponderKind.js';
 export * from './checks/drSeries.js';
+export * from './checks/silence.js';
