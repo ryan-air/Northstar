@@ -350,7 +350,7 @@ export class TrustPipeline {
       const tk = updateTransponderKind(
         rt.transponderState,
         event,
-        this.geo.land.query(event.position.lon, event.position.lat).onLand,
+        this.geo.land.query(event.position.lon, event.position.lat, { distance: 'none' }).onLand,
       );
       rt.transponderState = tk.state;
       rt.transponderKind = { kind: tk.kind, reasons: tk.reasons };

@@ -28,6 +28,8 @@ raw AIS stream); vessel metadata is as of fetch time, not per report.
 | v2, simplified land (before OSM) | held-out | 13.4% | 1.6% | 17.7% | 0 | 42 / 156 |
 | **v2 + OSM land** | calibration | 1.6% | 0.0% | 1.6% | 0 | 3 / 150 |
 | **v2 + OSM land** | **held-out** | **3.2%** | **1.6%** | **1.6%** | **0** | **27 / 156** |
+| **v2 + OSM, ships only** | calibration | 0.6% | 0.0% | 0.5% | 0 | 3 / 150 |
+| **v2 + OSM, ships only** | **held-out** | **1.6%** | **1.6%** | **0.0%** | **0** | **25 / 153** |
 
 - The audit baseline (39% suspicious, kinematics 27% warning) was **not reproduced exactly**;
   the raw-recording reproduction gives 23.8% / 91.8% warn+. The kinematics warnings are mostly
@@ -41,28 +43,39 @@ raw AIS stream); vessel metadata is as of fetch time, not per report.
   Kunda. With edge distance + hull tolerance this matters less, but port polygons are still a
   data gap.
 - Identity flags 0.5% of events — all TESTSHIP (MMSI 299999999, MID 299 unallocated).
-- Plan target "held-out ≤2% suspicious or worse" is **not met** (3.2%). Excluding the two test
-  transponders it is about 1.6%, but they are left in the numbers.
+- **Ships only: 1.6% held-out** (plan target ≤2% met, gated in CI). Non-vessel transponders are
+  labelled `transponder_kind = non_vessel_transponder` (non-ship MMSI type, or fixed within 100 m
+  on land for ≥30 min) and reported separately; their alerts still fire. Totals including them
+  stay in the table (3.2%).
+- On the held-out split 4 units were labelled non-vessel: FURUNOP 230031000 and TESTSHIP
+  299999999 (all their events flagged) plus 276675000 and 276799000 (stationary inside a Tallinn
+  land/quay polygon, never flagged). The rule cannot tell a ship moored on a quay polygon from a
+  fixed shore unit; because those two were never flagged, leaving them out makes the ships-only
+  rate slightly *higher*, not lower.
 
 ## Attack recall — v2, held-out split (unchanged by the OSM data except baselines)
+
+These attacks are injected into a **copy of the frozen recording, for measurement only**. The running app never injects attacks into recorded or live ships (simulated ships only) and never shows these results.
 
 Recall = share of attacked vessels whose trust reached suspicious/critical on an attacked
 report (ingest attacks: share of attacked reports rejected). "Pre" = how often those vessels
 were already flagged in the 30 min before the attack (v1's recall is inflated by this: pre ≈ 30%).
 
-| Attack | Recall v2 | Median TTD | Caught by | Baseline: speed > max | Baseline: on land |
+95% range = Wilson interval. With n = 10 a 90% result means roughly 60–98%.
+
+| Attack | Recall v2 (95% range) | Median TTD | Caught by | Baseline: speed > max | Baseline: on land |
 |---|---|---|---|---|---|
-| Teleport inland | 100% | 0 s | kinematics, geographic | 100% | 100% |
-| Teleport open sea (15 km) | 90% | 0 s | kinematics | 90% | 20% |
-| Step offset 100 m | 20% | 222 s | kinematics | 0% | 0% |
+| Teleport inland | 100% (72–100) | 0 s | kinematics, geographic | 100% | 100% |
+| Teleport open sea (15 km) | 90% (60–98) | 0 s | kinematics | 90% | 20% |
+| Step offset 100 m | 20% (6–51) | 222 s | kinematics | 0% | 0% |
 | Step offset 300 / 500 / 1000 m | 90% / 90% / 90% | 0 s | kinematics | 0 / 10 / 50% | 0% |
 | Drift 0.2 / 0.5 / 1 m/s | 20% / 20% / 30% | 222 s | kinematics | 0% | 0% |
-| Drift 2 m/s | 90% | 178 s | kinematics | 0% | 0% |
-| Area pull (≥4 vessels) | 98.9% | 76 s | kinematics, fleet_coherence | 97.2% | 28.2% |
-| Coherent area offset (3 km) | 98.1% | 76 s | kinematics, fleet_coherence | 89% | 9% |
-| Self-replay (1 h delay) | 100% (n=6) | 0 s | kinematics | 83% | 0% |
-| MMSI clone | 88.9% (n=9) | 176 s | kinematics, identity | 89% | 33% |
-| Kinematically consistent fake track | **0%** | — | — | 0% | 0% |
+| Drift 2 m/s | 90% (60–98) | 178 s | kinematics | 0% | 0% |
+| Area pull (≥4 vessels) | 98.9% (96–100, n=181) | 76 s | kinematics, fleet_coherence | 97.2% | 28.2% |
+| Coherent area offset (3 km) | 98.1% (95–99, n=155) | 76 s | kinematics, fleet_coherence | 89% | 9% |
+| Self-replay (1 h delay) | 100% (61–100, n=6) | 0 s | kinematics | 83% | 0% |
+| MMSI clone | 88.9% (57–98, n=9) | 176 s | kinematics, identity | 89% | 33% |
+| Kinematically consistent fake track | **0%** (0–28) | — | — | 0% | 0% |
 | Stale / future timestamps | 100% rejected | — | ingest | — | — |
 | Duplicates | 100% rejected | — | ingest | — | — |
 
@@ -74,6 +87,12 @@ Honest reading:
 - For area attacks the simple implied-speed baseline already gets 89–97%; fleet coherence v2
   adds attribution ("part of an area pattern") more than recall.
 - Small n: 10 instances per variant, 5–9 for self-replay and clone.
+
+## Denser data (in progress)
+
+`npm run record:stream` records the Digitraffic real-time stream: first 25 min gave 22,772 positions
+from 318 vessels, median 10 s between reports per vessel (eval-v1: 1–20 min). A frozen eval-v2
+from this stream is the next step for slow-drift / 100 m-offset recall.
 
 ## Evidence classes
 

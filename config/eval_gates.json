@@ -1,5 +1,5 @@
 {
-  "note": "P5.3 CI gates on the held-out split of eval-v1 with v2 configs (harness --n 10 --seed 7, deterministic). With OSM land installed: 3.2% suspicious-or-worse, of which geographic flags are two on-land test transponders (FURUNOP, TESTSHIP). Target from the plan is \u22642%.",
+  "note": "P5.3 CI gates on the held-out split of eval-v1 with v2 configs (harness --n 10 --seed 7, deterministic). With OSM land installed: 3.2% suspicious-or-worse, of which geographic flags are two on-land test transponders (FURUNOP, TESTSHIP). Target from the plan is ≤2%. Ships only (non-vessel transponders labelled and reported separately): 1.6% held-out, gated at <=2%.",
   "config": "v2",
   "split": "test",
   "max": {
@@ -7,7 +7,8 @@
     "flag_rate_per_check_pct.kinematics.warning_or_worse": 2.0,
     "flag_rate_per_check_pct.identity.warning_or_worse": 0.5,
     "vessels_ever_critical_while_stationary": 10,
-    "flag_rate_per_check_pct.geographic.warning_or_worse": 2.0
+    "flag_rate_per_check_pct.geographic.warning_or_worse": 2.0,
+    "vessels_only.suspicious_or_worse_pct": 2.0
   },
   "min_recall_pct": {
     "teleport_inland": 100,

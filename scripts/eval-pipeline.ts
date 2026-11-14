@@ -120,7 +120,7 @@ function makeSpeedBaseline(engine: Engine) {
 
 /** Baseline B: position inside a land polygon. */
 function landBaseline(engine: Engine, e: PositionEvent): boolean {
-  return engine.geo.land.query(e.position.lon, e.position.lat).onLand;
+  return engine.geo.land.query(e.position.lon, e.position.lat, { distance: 'none' }).onLand;
 }
 
 function summarise(acc: SplitAcc) {

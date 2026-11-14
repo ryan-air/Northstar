@@ -17,7 +17,8 @@ export interface LandQueryOptions {
    * inland depth on long straight coast segments.
    * 'edge' (v2): true point-to-segment distance to the polygon boundary.
    */
-  distance?: 'vertex' | 'edge';
+  /** 'none': containment only (no distance search) — cheap. */
+  distance?: 'vertex' | 'edge' | 'none';
 }
 
 export interface LandIndex {
@@ -206,6 +207,12 @@ export function buildLandIndex(
             : nearestEdgeDistM
           : nearestVertexDistM;
       const hits = tree.search({ minX: lon, minY: lat, maxX: lon, maxY: lat });
+      if (qopts.distance === 'none') {
+        for (const hit of hits) {
+          if (pointInPolygon(lon, lat, hit.feature)) return { onLand: true, inlandDepthM: 0, featureId: hit.id };
+        }
+        return { onLand: false, inlandDepthM: 0, featureId: null };
+      }
       for (const hit of hits) {
         if (pointInPolygon(lon, lat, hit.feature)) {
           return {
