@@ -274,6 +274,26 @@ export class HistoricalLab {
     }
   }
 
+  /**
+   * Each vessel's most recent real recorded report at or before tMs (within maxAgeMs), as
+   * events stamped with their own report time. Used after a clock jump so ships reappear at
+   * once instead of waiting for their next report; nothing is interpolated or invented.
+   */
+  lastReportsBefore(tMs: number, maxAgeMs: number): PositionEvent[] {
+    const out: PositionEvent[] = [];
+    for (const v of this.vessels) {
+      const ss = v.track.samples;
+      let best: (typeof ss)[number] | null = null;
+      for (const s of ss) {
+        const ts = sampleTs(s);
+        if (ts > tMs) break;
+        best = s;
+      }
+      if (best && tMs - sampleTs(best) <= maxAgeMs) out.push(this.emitSample(v, best, sampleTs(best), false));
+    }
+    return out;
+  }
+
   /** Move the shared Lab clock (clamped to the timeline); returns the time actually set. */
   seek(tMs: number): number {
     const t = Math.min(Math.max(tMs, this.timelineStartMs), this.timelineEndMs);

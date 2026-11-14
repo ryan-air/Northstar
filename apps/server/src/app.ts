@@ -301,6 +301,7 @@ export class NorthstarApp {
     const hist = await this.lab.init();
     this.useHistoricalLab = hist.ok;
     if (this.labFolder && this.useHistoricalLab) this.applyLabStatic();
+    this.reseedLabShips(this.lab.simTimeMs);
     if (hist.ok && this.lab.signedEntityId) {
       this.selectedEntityId = this.lab.signedEntityId;
       const bound = this.registry.bindEntity('DEV-VESSEL-001', this.lab.signedEntityId);
@@ -626,6 +627,7 @@ export class NorthstarApp {
       this.attachOsnmaToLabFleet();
       void this.seedAttestation();
       this.audit.append('lab_timeline_wrapped', { wraps: this.lab.wraps });
+      this.reseedLabShips(this.lab.simTimeMs);
     }
     // P1.4: validate every Lab event against the replay clock; rejects go to forensics only.
     const nowDate = new Date(simTimeIso);
@@ -748,6 +750,18 @@ export class NorthstarApp {
     );
   }
 
+  /**
+   * Re-place each recorded Lab ship at its latest real report from the last 20 min (processed
+   * at that report's own time), so after a start, wrap or jump the map is not empty until
+   * every ship happens to report again. Nothing is interpolated or invented.
+   */
+  private reseedLabShips(tMs: number): void {
+    if (!this.useHistoricalLab) return;
+    for (const e of this.lab.lastReportsBefore(tMs, 20 * 60_000)) {
+      this.pipeline.process(e, e.source_timestamp);
+    }
+  }
+
   /** Lab-return events for the UI: receiver-flagged windows, RF captures, recording window. */
   labEvents(): {
     entity_id: string;
@@ -795,6 +809,7 @@ export class NorthstarApp {
     }
     this.attachOsnmaToLabFleet();
     void this.seedAttestation();
+    this.reseedLabShips(t);
     this.audit.append('lab_seek', { sim_time: new Date(t).toISOString() });
     this.broadcast({ type: 'snapshot', payload: this.snapshot() });
     return { ok: true, sim_time: new Date(t).toISOString() };
