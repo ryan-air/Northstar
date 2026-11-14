@@ -42,8 +42,7 @@ data/geo/.cache/
 test-results/
 playwright-report/
 
-# Editor / local agent
-.cursor/
+# Editor
 .vscode/
 
 data/fixtures/audit.jsonl.broken-*
@@ -63,3 +62,14 @@ data/rf/clips/
 data/lab/
 docs/lab-data/returns/
 docs/lab-data/attachments/
+
+# Private data — kept on local disks only, never pushed (share out of band; same paths)
+data/replay/
+data/rf/
+docs/lab-data/
+data/geo/land_osm_gof.geojson
+data/geo/ports_v2.geojson
+data/geo/osm_provenance.json
+data/fixtures/audit.jsonl
+data/fixtures/eval_metrics.json
+data/fixtures/eval_pipeline_metrics.json
