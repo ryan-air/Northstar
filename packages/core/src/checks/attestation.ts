@@ -70,7 +70,9 @@ export function checkAttestation(
     anomaly_score: 0,
     severity: 'none',
     observed_at: nowIso,
-    explanation: `Hardware-backed attestation verified via ${evidence.provider}.`,
+    explanation: evidence.synthetic
+      ? `[Synthetic] Attestation chain verified via ${evidence.provider}, but only to a synthetic root (not a vendor root).`
+      : `Hardware-backed attestation verified via ${evidence.provider}.`,
     source_ids: [evidence.provider],
     quality: 1,
     freshness: 1,

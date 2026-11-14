@@ -6,6 +6,7 @@ import type {
   ScenarioId,
   VesselClass,
 } from '@northstar/contracts';
+import type { ReplayRecord } from './types.js';
 import {
   buildTracks,
   enrichNames,
@@ -95,6 +96,13 @@ export class HistoricalLab {
     this.scenario = this.normalScenario('LAB-0');
   }
 
+  /** Lab-return vessel (recorded AIS) that becomes the full-stack ship; set before init(). */
+  private extraTrackRecords: ReplayRecord[] | null = null;
+  forcedSignedEntityId: string | null = null;
+  setLabTrack(records: ReplayRecord[]): void {
+    this.extraTrackRecords = records.length >= 3 ? records : null;
+  }
+
   async init(): Promise<{ ok: boolean; reason: string; vesselCount: number }> {
     const records = loadAllRecords();
     this.manifest = loadManifest();
@@ -107,6 +115,15 @@ export class HistoricalLab {
       };
     }
     const tracks = buildTracks(records, { maxVessels: 24, minSamples: 3 });
+    if (this.extraTrackRecords) {
+      const extra = buildTracks(this.extraTrackRecords, { maxVessels: 1, minSamples: 3 })[0];
+      if (extra) {
+        const i = tracks.findIndex((x) => x.mmsi === extra.mmsi);
+        if (i >= 0) tracks.splice(i, 1);
+        tracks.unshift(extra);
+        this.forcedSignedEntityId = extra.entity_id;
+      }
+    }
     await enrichNames(tracks);
     if (tracks.length === 0) {
       this.ready = false;
@@ -132,8 +149,8 @@ export class HistoricalLab {
         lastSog: typeof s0.sog === 'number' ? s0.sog : 0,
       };
     });
-    this.signedEntityId = moving.entity_id;
-    this.scenario = this.normalScenario(moving.entity_id);
+    this.signedEntityId = this.forcedSignedEntityId ?? moving.entity_id;
+    this.scenario = this.normalScenario(this.signedEntityId);
     this.ready = true;
     // Align lab clock to first sample time for honesty in UI
     const t0 =
@@ -224,6 +241,17 @@ export class HistoricalLab {
     }
     // Start slightly before the seed so the first ticks emit the samples around it.
     this.timelineSeedMs = Math.max(this.timelineStartMs, bestT - 30_000);
+    // A lab-return vessel is the full-stack ship: start the clock at its first report.
+    const forced = this.forcedSignedEntityId
+      ? this.vessels.find((v) => v.track.entity_id === this.forcedSignedEntityId)
+      : undefined;
+    if (forced) {
+      this.timelineSeedMs = Math.max(this.timelineStartMs, sampleTs(forced.track.samples[0]!) - 30_000);
+      this.seekShared(this.timelineSeedMs);
+      this.signedEntityId = forced.track.entity_id;
+      this.scenario = this.normalScenario(forced.track.entity_id);
+      return;
+    }
     this.seekShared(this.timelineSeedMs);
 
     // Re-pick the signed full-stack vessel: the moving track with the most samples in

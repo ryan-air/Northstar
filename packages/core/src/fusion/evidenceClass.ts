@@ -69,16 +69,18 @@ export function classifyCheckEvidence(checkId: CheckResult['check_id'], ctx: Evi
       return sensorClass(ctx.imu?.labels);
     case 'osnma':
       if (ctx.osnma?.mode === 'live') return 'live';
+      if (ctx.osnma?.mode === 'synthetic') return 'simulated';
       return 'demo';
     case 'attestation':
       // Server-asserted software attestation (U2): no verifiable chain.
+      if (ctx.attestation?.synthetic) return 'simulated';
       return ctx.attestation && ctx.attestation.assurance_level === 'hardware' && ctx.attestation.verified
         ? 'live'
         : 'demo';
     case 'rf_lab':
     case 'spatial_aoa':
-      // Fixed capture with no timestamps/geometry bound to this vessel (U1).
-      return 'demo';
+      // Recorded, GPS-timestamped capture bound to this vessel → recorded; else fixed demo capture.
+      return ctx.rfLab?.mode === 'lab_iq_recorded' ? 'recorded' : 'demo';
     case 'device_signature':
       // The cryptographic verification itself is real when a signed envelope arrives.
       return ctx.event.source === 'device_telemetry' ? (ev === 'simulated' ? 'live' : ev) : ev;

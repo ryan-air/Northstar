@@ -55,7 +55,8 @@ export const OsnmaResultSchema = z.object({
   satellite_id: z.string().nullable().optional(),
   message_type: z.string().nullable().optional(),
   reason: z.string().nullable().default(null),
-  mode: z.enum(['live', 'protocol_verification_demo', 'not_connected']).default('not_connected'),
+  /** 'synthetic': recorded-format OSNMA results generated for a dataset (not a real SIS). */
+  mode: z.enum(['live', 'protocol_verification_demo', 'not_connected', 'synthetic']).default('not_connected'),
   public_key_id: z.string().nullable().optional(),
 });
 export type OsnmaResult = z.infer<typeof OsnmaResultSchema>;
@@ -67,6 +68,8 @@ export const AttestationEvidenceSchema = z.object({
   verified: z.boolean(),
   observed_at: z.string().datetime(),
   reason: z.string().nullable().default(null),
+  /** Chain verifies only to a synthetic root (not a vendor root): evidence class simulated. */
+  synthetic: z.boolean().optional(),
 });
 export type AttestationEvidence = z.infer<typeof AttestationEvidenceSchema>;
 
@@ -76,7 +79,8 @@ export const RfLabResultSchema = z.object({
   layout_id: z.string(),
   entity_id: z.string().nullable().optional(),
   observed_at: z.string().datetime(),
-  mode: z.enum(['lab_iq_multichannel', 'not_connected']).default('lab_iq_multichannel'),
+  /** 'lab_iq_recorded': analysed from a recorded, GPS-timestamped capture bound to this vessel. */
+  mode: z.enum(['lab_iq_multichannel', 'not_connected', 'lab_iq_recorded']).default('lab_iq_multichannel'),
   antennas: z.number().int().positive(),
   sample_rate_hz: z.number().positive(),
   center_freq_hz: z.number().positive(),

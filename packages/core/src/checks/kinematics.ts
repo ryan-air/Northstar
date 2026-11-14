@@ -47,6 +47,12 @@ export interface KinematicsCusumConfig {
    * drift. 'reported' uses only the vessel's own SOG/COG prediction.
    */
   residual?: 'min' | 'reported';
+  /**
+   * How the SOG/COG prediction is formed. 'previous' (default, v1/earlier v2): previous
+   * report's SOG/COG only. 'trapezoid': average of the previous and current reported
+   * velocity vectors — follows steady turns and speed changes between sparse reports.
+   */
+  prediction?: 'previous' | 'trapezoid';
 }
 
 export interface TrackPoint {
@@ -211,6 +217,10 @@ export function checkKinematics(
   if (v2 && config.prefer_rot_field && current.rot_deg_min != null && Number.isFinite(current.rot_deg_min)) {
     rotDegMin = Math.abs(current.rot_deg_min);
     evidence.rot_source = 'ais_rot';
+  } else if (previous.interpolated || current.interpolated) {
+    // Interpolated (replay gap-fill) points carry the previous sample's heading/COG, so a
+    // heading/COG-derived turn rate across them is meaningless.
+    evidence.rot_source = 'skipped_interpolated';
   } else if (
     v2 &&
     config.prefer_rot_field &&
@@ -247,8 +257,25 @@ export function checkKinematics(
   const nextState = { ...state };
   const predictionResiduals: number[] = [];
   if (previous.speed_over_ground_knots != null && previous.course_over_ground_deg != null) {
-    const predDist = knotsToMps(previous.speed_over_ground_knots) * dtS;
-    const predBearing = previous.course_over_ground_deg;
+    let predDist = knotsToMps(previous.speed_over_ground_knots) * dtS;
+    let predBearing = previous.course_over_ground_deg;
+    if (
+      config.cusum?.prediction === 'trapezoid' &&
+      current.speed_over_ground_knots != null &&
+      current.course_over_ground_deg != null
+    ) {
+      const vec = (sog: number, cog: number) => {
+        const r = (cog * Math.PI) / 180;
+        return [knotsToMps(sog) * Math.sin(r), knotsToMps(sog) * Math.cos(r)] as const;
+      };
+      const a = vec(previous.speed_over_ground_knots, previous.course_over_ground_deg);
+      const b = vec(current.speed_over_ground_knots, current.course_over_ground_deg);
+      const e = (a[0] + b[0]) / 2;
+      const n = (a[1] + b[1]) / 2;
+      predDist = Math.hypot(e, n) * dtS;
+      predBearing = ((Math.atan2(e, n) * 180) / Math.PI + 360) % 360;
+      evidence.prediction = 'trapezoid';
+    }
     // predicted point
     const { destination } = requireDestination();
     const pred = destination(

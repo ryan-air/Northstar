@@ -73,3 +73,6 @@ data/geo/osm_provenance.json
 data/fixtures/audit.jsonl
 data/fixtures/eval_metrics.json
 data/fixtures/eval_pipeline_metrics.json
+
+# Lab return from the lab (private)
+data_lab/

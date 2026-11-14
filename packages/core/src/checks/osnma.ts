@@ -74,7 +74,11 @@ export function checkOsnma(
   }
 
   const demo =
-    result.mode === 'protocol_verification_demo' ? '[Protocol verification demo] ' : '';
+    result.mode === 'protocol_verification_demo'
+      ? '[Protocol verification demo] '
+      : result.mode === 'synthetic'
+        ? '[Synthetic OSNMA data] '
+        : '';
   const sharedFleet =
     result.mode === 'protocol_verification_demo'
       ? ' Shared ICD/nav-data auth applied to Hist Lab fleet — not a per-vessel RF receiver.'

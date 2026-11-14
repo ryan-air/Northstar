@@ -46,6 +46,7 @@ import {
 } from './fixtures/loadFixtures.js';
 import { LiveFeedService } from './live/liveFeed.js';
 import { HistoricalLab } from './replay/historicalLab.js';
+import { atOrBefore, labFolderPath, loadLabFolder, type LabFolder } from './lab/labFolder.js';
 import { HistoricalRecorder } from './replay/recorder.js';
 import { SecurityForensics } from './security/forensics.js';
 import { ShoreKeyring } from './security/shoreKeys.js';
@@ -103,6 +104,9 @@ export class NorthstarApp {
    * on the Lab clock as attack targets.
    */
   readonly labSimShipIds: Set<string>;
+  /** Private lab return (data_lab/), null when absent. */
+  labFolder: LabFolder | null = null;
+  private labSecondaryIdx = 0;
   lab: HistoricalLab;
   recorder: HistoricalRecorder;
   pipeline: TrustPipeline;
@@ -278,8 +282,23 @@ export class NorthstarApp {
     this.lastOsnmaResult =
       loadOsnmaIcdCache(bootIso) ?? osnmaFixture('authenticated', bootIso);
 
+    // Private lab return (gitignored data_lab/): its vessel becomes the full-stack Lab ship.
+    try {
+      this.labFolder = loadLabFolder(labFolderPath(REPO_ROOT));
+    } catch (e) {
+      console.warn(`[northstar] lab folder could not be loaded: ${(e as Error).message}`);
+      this.labFolder = null;
+    }
+    if (this.labFolder) {
+      this.lab.setLabTrack(this.labFolder.primaryAis);
+      console.log(
+        `[northstar] lab return loaded: ${this.labFolder.entityId} (${this.labFolder.primaryAis.length} AIS reports; U2/U5 synthetic)`,
+      );
+    }
+
     const hist = await this.lab.init();
     this.useHistoricalLab = hist.ok;
+    if (this.labFolder && this.useHistoricalLab) this.applyLabStatic();
     if (hist.ok && this.lab.signedEntityId) {
       this.selectedEntityId = this.lab.signedEntityId;
       const bound = this.registry.bindEntity('DEV-VESSEL-001', this.lab.signedEntityId);
@@ -626,6 +645,11 @@ export class NorthstarApp {
     for (const e of aisB) this.pipeline.ingestSecondary(e);
     for (const g of gnss) this.pipeline.setGnss(g);
     for (const i of imu) this.pipeline.setImu(i);
+    if ('wrapped' in batch && batch.wrapped && this.labFolder) {
+      this.labSecondaryIdx = 0;
+      this.applyLabStatic();
+    }
+    this.applyLabTick(Date.parse(simTimeIso));
 
     // OSNMA protocol demo for Hist Lab / synthetic lab only (never LIVE-*)
     // OSNMA failure is an injected attack: it goes to a simulated ship only (below).
@@ -638,6 +662,7 @@ export class NorthstarApp {
     }
     this.attachOsnmaToLabFleet(aisA.map((e) => e.entity_id));
     if (simOsnmaFail) this.pipeline.setOsnma(this.sim.scenario.targetId, osnmaFixture('failed', simTimeIso));
+    this.applyLabOsnma(Date.parse(simTimeIso));
     if (this.simOverrides.osnma) {
       const o = this.simOverrides.osnma;
       this.pipeline.setOsnma(o.target, { ...o.result, observed_at: simTimeIso });
@@ -645,7 +670,7 @@ export class NorthstarApp {
     // Re-bind full-stack RF/AoA each tick (only signed Lab entity, demo evidence)
     if (this.lastRfLabResult) {
       const fsId = this.fullstackEntityId();
-      if (fsId && !fsId.startsWith('LIVE-') && fsId !== this.simOverrides.rf?.target) {
+      if (fsId && !fsId.startsWith('LIVE-') && fsId !== this.simOverrides.rf?.target && fsId !== this.labFolder?.entityId) {
         this.pipeline.setRfLab(fsId, this.lastRfLabResult);
       }
     }
@@ -663,6 +688,44 @@ export class NorthstarApp {
     if (scenario.tickCount % 2 === 0) {
       this.broadcast({ type: 'snapshot', payload: this.snapshot() });
     }
+  }
+
+  /** Lab evidence that does not change per tick: DR series, radar/SAR obs, attestation. */
+  private applyLabStatic(): void {
+    const lab = this.labFolder;
+    if (!lab) return;
+    this.pipeline.setDrSeries(lab.entityId, lab.dr);
+    this.pipeline.setTargetObservations(lab.entityId, lab.targetObs);
+    if (lab.attestation) this.pipeline.setAttestation(lab.entityId, lab.attestation);
+  }
+
+  /** Per-tick lab evidence at the Lab clock: GNSS diagnostics, secondary AIS, RF captures. */
+  private applyLabTick(tMs: number): void {
+    const lab = this.labFolder;
+    if (!lab || !this.useHistoricalLab) return;
+    const g = atOrBefore(lab.gnss, (x) => Date.parse(x.observed_at), tMs, 10_000);
+    if (g) this.pipeline.setGnss(g);
+    while (
+      this.labSecondaryIdx < lab.secondaryAis.length &&
+      Date.parse(lab.secondaryAis[this.labSecondaryIdx]!.source_timestamp) <= tMs
+    ) {
+      this.pipeline.ingestSecondary(lab.secondaryAis[this.labSecondaryIdx]!);
+      this.labSecondaryIdx++;
+    }
+    const cap = lab.captures.find((c) => tMs >= c.startMs - 60_000 && tMs <= c.endMs + 60_000);
+    this.pipeline.setRfLab(lab.entityId, cap ? cap.result : null);
+    if (lab.attestation) this.pipeline.setAttestation(lab.entityId, lab.attestation);
+  }
+
+  /** Synthetic OSNMA (U5) for the lab vessel, after the fleet-wide OSNMA binding. */
+  private applyLabOsnma(tMs: number): void {
+    const lab = this.labFolder;
+    if (!lab || !this.useHistoricalLab) return;
+    const o = atOrBefore(lab.osnma, (x) => Date.parse(x.observed_at), tMs, 10_000);
+    this.pipeline.setOsnma(
+      lab.entityId,
+      o ?? { status: 'unavailable', observed_at: new Date(tMs).toISOString(), reason: 'outside lab recording window', mode: 'synthetic' },
+    );
   }
 
   /** Attacks always go to simulated ships only; kept as a method for the API/status. */
@@ -737,6 +800,8 @@ export class NorthstarApp {
     if (id === 'reset') {
       this.pipeline.reset();
       this.labValidator.reset();
+      this.labSecondaryIdx = 0;
+      if (this.labFolder && this.useHistoricalLab) this.applyLabStatic();
       // Preserve sequence counters across scenario reset (persistPath); only clear hash cache.
       this.replay.reset(undefined, { clearSequences: false });
       this.lastOsnmaResult =

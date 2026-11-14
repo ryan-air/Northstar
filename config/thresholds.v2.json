@@ -60,7 +60,8 @@
       "decay": 0.9,
       "threshold": 4.0,
       "reset_gap_s": 360,
-      "residual": "reported"
+      "residual": "reported",
+      "prediction": "trapezoid"
     },
     "cusum_calibration_note": "Calibrated on the 2026-11-12 split only (eval-v1). Calibration data is sparse (median report gap ~37 min), so FP rates were \u22640.03% for every swept variant; the most sensitive variant was chosen and judged on the held-out split."
   },

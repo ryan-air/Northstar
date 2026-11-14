@@ -20,6 +20,11 @@ import {
   createIdentityState,
   stampEvidenceClass,
   createTransponderKindState,
+  checkDrSeries,
+  checkTargetObservation,
+  type DrAnchor,
+  type DrSample,
+  type TargetObservation,
   updateTransponderKind,
   type TransponderKind,
   type TransponderKindState,
@@ -75,6 +80,9 @@ interface EntityRuntime {
   transponderState: TransponderKindState;
   lastIdentity?: CheckResult;
   transponderKind?: { kind: TransponderKind; reasons: string[] };
+  drSeries?: DrSample[];
+  drAnchor?: DrAnchor | null;
+  targetObs?: TargetObservation[];
   lastEvent?: PositionEvent;
   previousEvent?: PositionEvent;
   lastAisEvent?: PositionEvent;
@@ -152,6 +160,18 @@ export class TrustPipeline {
     this.ensure(entityId).osnma = r;
   }
 
+  /** Recorded heading/speed-log series for GNSS-independent dead reckoning (lab return). */
+  setDrSeries(entityId: string, series: DrSample[] | null): void {
+    const rt = this.ensure(entityId);
+    rt.drSeries = series ?? undefined;
+    rt.drAnchor = null;
+  }
+
+  /** Independent observations of this vessel (radar/SAR), sorted by time (lab return). */
+  setTargetObservations(entityId: string, obs: TargetObservation[] | null): void {
+    this.ensure(entityId).targetObs = obs ?? undefined;
+  }
+
   setAttestation(entityId: string, a: AttestationEvidence | null): void {
     this.ensure(entityId).attestation = a;
   }
@@ -214,7 +234,15 @@ export class TrustPipeline {
         reliability: 0.7,
       }));
 
-    const neighbors = checkNeighbors(event, neighborObs, this.thresholds.neighbors, nowIso);
+    // Independent observations of this vessel (e.g. VTS radar / SAR from a lab return) take
+    // precedence over the nearby-traffic comparison when one is fresh enough.
+    const targetCheck =
+      rt.targetObs && srcKey !== 'device_telemetry'
+        ? checkTargetObservation(event, rt.targetObs, this.thresholds.neighbors, nowIso)
+        : null;
+    const neighbors = targetCheck
+      ? { ...targetCheck, evidence_class: 'recorded' as const }
+      : checkNeighbors(event, neighborObs, this.thresholds.neighbors, nowIso);
 
     const cross = checkAisCrossFeed(
       event,
@@ -223,6 +251,7 @@ export class TrustPipeline {
         : null,
       nowIso,
       this.thresholds.neighbors.conflict_distance_m,
+      this.perSource ? this.thresholds.neighbors.max_age_s : undefined,
     );
 
     const gnss = checkGnssDiagnostics(
@@ -250,6 +279,13 @@ export class TrustPipeline {
     );
     if (this.perSource) src.dr = imuR.dr;
     else rt.dr = imuR.dr;
+    // Recorded gyro-heading + speed-log series (lab return): GNSS-independent dead reckoning.
+    let imuResult = imuR.result;
+    if (rt.drSeries && srcKey !== 'device_telemetry') {
+      const drr = checkDrSeries(kinEvent, rt.drSeries, rt.drAnchor ?? null, nowIso, undefined, neighbors.status !== 'fail');
+      rt.drAnchor = drr.anchor;
+      imuResult = drr.result;
+    }
 
     const osnma = checkOsnma(event.entity_id, rt.osnma ?? null, nowIso);
     const sig = checkDeviceSignature(
@@ -331,7 +367,7 @@ export class TrustPipeline {
       neighbors,
       cross,
       gnss,
-      imuR.result,
+      imuResult,
       osnma,
       sig,
       attest,
