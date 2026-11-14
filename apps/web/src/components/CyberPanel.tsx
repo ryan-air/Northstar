@@ -131,11 +131,6 @@ export function CyberPanel() {
 
   return (
     <div className="tab-body cyber-panel">
-      <p className="muted" style={{ marginTop: 0, fontSize: 11, lineHeight: 1.4 }}>
-        {threats?.framing ??
-          'Passwordless device identity + integrity: Ed25519 provenance, OSNMA ICD, audit chain.'}
-      </p>
-
       {evalMetrics?.confusion && (
         <div
           className="muted"
@@ -375,8 +370,7 @@ export function CyberPanel() {
           </>
         ) : null}
         <br />
-        {summary?.osnma.result?.reason ??
-          'Data authentication only — not PVT proof. LIVE AIS stays unavailable.'}
+        {summary?.osnma.result?.reason ?? null}
       </div>
 
       <div className="panel-title">RF lab / AoA</div>
@@ -396,8 +390,7 @@ export function CyberPanel() {
         <br />
         {summary?.rf?.spoof_overlay
           ? `Overlay: ${summary.rf.spoof_overlay}`
-          : summary?.rf?.reason ??
-            'Dual-antenna lab IQ on full-stack Hist Lab vessel only — not LIVE AIS.'}
+          : summary?.rf?.reason ?? null}
         {summary?.rf?.fc_note ? (
           <>
             <br />
