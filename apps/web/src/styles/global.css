@@ -674,6 +674,54 @@ button {
   font-size: 12px;
 }
 
+/* Cyber floating window */
+.cyber-window-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 12px;
+}
+
+.cyber-window {
+  width: min(640px, 90vw);
+  max-height: 80vh;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.cyber-window-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel-2);
+  flex-shrink: 0;
+}
+
+.cyber-window-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  padding: 2px 6px;
+}
+.cyber-window-close:hover {
+  color: var(--text);
+}
+
+.cyber-window-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
 @media (max-width: 1100px) {
   .main-row {
     grid-template-columns: 220px 1fr 280px;
