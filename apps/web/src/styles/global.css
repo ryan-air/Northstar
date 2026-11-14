@@ -251,6 +251,10 @@ button {
   border: 1px solid var(--border-soft);
   padding: 10px;
 }
+.metric-card.wide {
+  grid-column: 1 / -1;
+  text-align: center;
+}
 
 .metric-card .n {
   font-family: var(--font-mono);

@@ -27,6 +27,10 @@ export function LeftPanel() {
           <div className="l">Monitored</div>
         </div>
         <div className="metric-card">
+          <div className="n">{live?.vessel_count ?? 0}</div>
+          <div className="l">Live Ships</div>
+        </div>
+        <div className="metric-card">
           <div className="n" style={{ color: 'var(--suspicious)' }}>
             {m?.high_risk_vessels ?? 0}
           </div>
@@ -38,13 +42,9 @@ export function LeftPanel() {
           </div>
           <div className="l">Alerts</div>
         </div>
-        <div className="metric-card">
+        <div className="metric-card wide">
           <div className="n">{m?.average_evidence_coverage?.toFixed(0) ?? 0}%</div>
           <div className="l">Avg Coverage</div>
-        </div>
-        <div className="metric-card">
-          <div className="n">{live?.vessel_count ?? 0}</div>
-          <div className="l">Live Ships</div>
         </div>
       </div>
 
