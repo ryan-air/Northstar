@@ -98,13 +98,6 @@ button {
   color: var(--text-dim);
 }
 
-.disclaimer {
-  font-size: 10px;
-  color: var(--text-muted);
-  padding: 6px 10px;
-  border-top: 1px solid var(--border-soft);
-}
-
 /* Header */
 .top-bar {
   display: grid;
@@ -422,29 +415,6 @@ button {
 .status-pill.unavailable,
 .status-pill.unsupported,
 .status-pill.pending { color: var(--text-dim); }
-
-.scenario-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.scenario-list button {
-  text-align: left;
-  background: var(--bg-panel-2);
-  border: 1px solid var(--border);
-  padding: 8px 10px;
-}
-.scenario-list button:hover {
-  border-color: var(--accent-dim);
-}
-.scenario-list button.active {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.scenario-list button.reset {
-  border-color: var(--warn);
-  color: var(--warn);
-}
 
 /* Bottom bar */
 .bottom-bar {
