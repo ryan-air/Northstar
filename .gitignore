@@ -58,3 +58,8 @@ data/rf/raw/
 data/rf/clips/
 !data/rf/**/*.json
 !data/rf/**/*.md
+
+# Lab returns (may be sensitive; repo is public): imported outputs and attachments stay local
+data/lab/
+docs/lab-data/returns/
+docs/lab-data/attachments/
