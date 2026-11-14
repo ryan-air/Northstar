@@ -2,7 +2,7 @@
  * Onboard gateway simulator — signs telemetry and POSTs to Northstar.
  * Follows Hist Lab signed entity; issues/embeds challenge nonces; optional mTLS + PKCS#11.
  */
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import https from 'node:https';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,7 +88,26 @@ const USE_MTLS =
 type Mode = 'normal' | 'tamper' | 'replay';
 
 let mode: Mode = 'normal';
-let sequence = 1;
+// Monotonic sequence counter persisted next to the device key (as a real device keeps it in
+// non-volatile storage). Without this a restart reuses old numbers and the shore correctly
+// rejects every message as a replay.
+const SEQ_PATH = join(KEY_DIR, `${DEVICE_ID}.seq`);
+let sequence = (() => {
+  try {
+    const n = Number(readFileSync(SEQ_PATH, 'utf8').trim());
+    return Number.isInteger(n) && n > 0 ? n + 1 : 1;
+  } catch {
+    return 1;
+  }
+})();
+function persistSequence(n: number): void {
+  try {
+    mkdirSync(dirname(SEQ_PATH), { recursive: true });
+    writeFileSync(SEQ_PATH, `${n}\n`, { mode: 0o600 });
+  } catch {
+    /* best effort */
+  }
+}
 let lastEnvelope: unknown = null;
 let signer: PayloadSigner | null = null;
 let onboardTrack: OnboardTrack | null = null;
@@ -328,7 +347,7 @@ async function tick(): Promise<void> {
     v: 1,
     device_id: DEVICE_ID,
     entity_id: ENTITY_ID,
-    sequence_number: sequence++,
+    sequence_number: (persistSequence(sequence), sequence++),
     timestamp: new Date().toISOString(),
     ...(observationTime ? { observation_time: observationTime } : {}),
     firmware_version: '1.0.0',

@@ -182,7 +182,7 @@ export class LiveFeedService {
         secondary_accepted: this.secondaryValidator.accepted,
       },
       note:
-        'Live AIS from Fintraffic Digitraffic (Finnish waters). Lab vessels remain simulated for attack demos.',
+        'Live AIS from Fintraffic Digitraffic (Finnish waters). Attacks are only injected into simulated Lab ships.',
     };
   }
 }

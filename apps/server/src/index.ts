@@ -359,7 +359,7 @@ async function main() {
       ok: result.ok,
       expected: 'challenge_required or challenge_rejected',
       result,
-      note: 'Fail-closed demo when NORTHSTAR_CHALLENGE_REQUIRED=true',
+      note: 'Fail-closed check when NORTHSTAR_CHALLENGE_REQUIRED=true',
     };
   });
   server.post<{ Params: { id: string } }>(
@@ -422,7 +422,7 @@ async function main() {
         ? 'mTLS on telemetry (channel identity)'
         : 'mTLS available (NORTHSTAR_TLS_ENABLED + MTLS_ENABLED)',
       'Plain-HTTP telemetry refused on network binds (TLS device server)',
-      'Scoped admin tokens (scenario / rf / osnma / audit / devices / demo)',
+      'Scoped admin tokens (scenario / rf / osnma / audit / devices / challenge test)',
       'One-time, per-vessel enrolment tokens (hashed, expiring)',
       'Attacks injected only into simulated ships',
       'Seeded fuzzing of untrusted inputs + SBOM in CI',

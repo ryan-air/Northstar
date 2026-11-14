@@ -57,7 +57,7 @@ describe('stretch layers honest unavailable', () => {
     expect(r.status).toBe('unavailable');
   });
 
-  it('OSNMA protocol demo authenticated is pass with demo label', () => {
+  it('OSNMA protocol demo authenticated is pass with test-vector label', () => {
     const r = checkOsnma(
       'VESSEL-001',
       {
@@ -69,7 +69,7 @@ describe('stretch layers honest unavailable', () => {
       '2026-11-11T10:00:00.000Z',
     );
     expect(r.status).toBe('pass');
-    expect(r.explanation).toMatch(/Protocol verification demo/i);
+    expect(r.explanation).toMatch(/ICD test vector/i);
     expect(r.explanation).toMatch(/not PVT/i);
   });
 

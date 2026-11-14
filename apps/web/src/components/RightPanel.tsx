@@ -110,11 +110,13 @@ export function RightPanel() {
                 {c.evidence_class && c.status !== 'unavailable' && c.status !== 'unsupported' && (
                   <span
                     className={`evidence-pill ${c.evidence_class}`}
-                    title="Where this evidence comes from: live feed, recorded data, simulated/synthetic, or a fixed demo sample"
+                    title="Where this evidence comes from: live feed, recorded data, simulated/synthetic, or a fixed test sample"
                   >
                     {c.evidence_class === 'simulated' && /synthetic/i.test(c.explanation)
                       ? 'synthetic'
-                      : c.evidence_class}
+                      : c.evidence_class === 'demo'
+                        ? 'fixture'
+                        : c.evidence_class}
                   </span>
                 )}
               </div>
@@ -200,7 +202,7 @@ export function RightPanel() {
               >
                 OSNMA:{' '}
                 {snapshot.lab.osnma_protocol_status === 'authenticated'
-                  ? 'ICD demo'
+                  ? 'ICD test vector'
                   : snapshot.lab.osnma_protocol_status}
               </div>
             )}

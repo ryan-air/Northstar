@@ -8,7 +8,7 @@ export const THREAT_MODEL = {
     'Vessel position integrity estimate (trust score + evidence)',
     'Signed onboard telemetry channel (Ed25519)',
     'Hash-chained audit log',
-    'OSNMA navigation-message authentication evidence (protocol demo / ICD vectors)',
+    'OSNMA navigation-message authentication evidence (ICD test vectors)',
   ],
   adversaries: [
     {
@@ -69,7 +69,7 @@ export const THREAT_MODEL = {
       capability: 'Forge I/NAV content without valid OSNMA tags',
       northstar_controls: [
         'OSNMAlib ICD vector verification (TESLA delayed MAC + KROOT)',
-        'Evidence layer fails closed on MAC mismatch demo',
+        'Evidence layer fails closed on MAC mismatch test',
       ],
       residual_risk:
         'OSNMA ≠ PVT auth; authenticated nav data can still feed a spoofed receiver solution',

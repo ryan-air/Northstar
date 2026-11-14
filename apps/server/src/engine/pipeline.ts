@@ -84,6 +84,9 @@ interface EntityRuntime {
   drSeries?: DrSample[];
   drAnchor?: DrAnchor | null;
   targetObs?: TargetObservation[];
+  /** Latest checks from a non-device (AIS) report, and latest device-only checks. */
+  lastAisChecks?: CheckResult[];
+  deviceChecks?: { checks: CheckResult[]; atWallMs: number };
   /** Signed onboard track comes from an independent receiver (lab return), not an AIS copy. */
   onboardIndependent?: boolean;
   /** Silence/jamming episodes currently alerted (one alert per episode). */
@@ -460,8 +463,31 @@ export class TrustPipeline {
       onboardTrackIsAisCopy: !rt.onboardIndependent,
     });
 
+    // One assessment per vessel across sources: a signed device report refreshes only the
+    // device checks on top of the latest AIS-based checks, and AIS reports carry the latest
+    // device checks (fresh by wall clock — device envelopes are wall-clock stamped).
+    const DEVICE_CHECKS = new Set<CheckResult['check_id']>(['device_signature', 'signed_vs_ais', 'attestation']);
+    let fusedInput = checks;
+    if (srcKey === 'device_telemetry') {
+      rt.deviceChecks = { checks: checks.filter((c) => DEVICE_CHECKS.has(c.check_id)), atWallMs: Date.now() };
+      if (rt.lastAisChecks) {
+        const dev = new Map(rt.deviceChecks.checks.map((c) => [c.check_id, c]));
+        fusedInput = rt.lastAisChecks.map((c) => dev.get(c.check_id) ?? c);
+      }
+    } else {
+      rt.lastAisChecks = checks;
+      if (rt.deviceChecks && Date.now() - rt.deviceChecks.atWallMs <= 30_000) {
+        const dev = new Map(rt.deviceChecks.checks.map((c) => [c.check_id, c]));
+        fusedInput = checks.map((c) =>
+          DEVICE_CHECKS.has(c.check_id) && (c.status === 'unavailable' || c.check_id === 'device_signature')
+            ? (dev.get(c.check_id) ?? c)
+            : c,
+        );
+      }
+    }
+
     const prevScore = rt.trust?.trust_score ?? null;
-    const fused = fuseTrust(event.entity_id, checks, this.fusion, rt.hardState, nowIso, {
+    const fused = fuseTrust(event.entity_id, fusedInput, this.fusion, rt.hardState, nowIso, {
       observationTs: kinEvent.source_timestamp,
     });
     rt.hardState = fused.hardState;
@@ -514,7 +540,7 @@ export class TrustPipeline {
         explanation: fused.assessment.explanation,
         trust_score_before: prevScore,
         trust_score_after: fused.assessment.trust_score,
-        check_ids: checks.filter((c) => c.status === 'fail' || c.status === 'warning').map((c) => c.check_id),
+        check_ids: fusedInput.filter((c) => c.status === 'fail' || c.status === 'warning').map((c) => c.check_id),
         observed_at: nowIso,
         evidence_refs: [],
         hard: fused.assessment.hard_alerts.length > 0,

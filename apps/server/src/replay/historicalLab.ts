@@ -633,7 +633,7 @@ export class HistoricalLab {
         : 'shared_absolute_clock',
       wraps: this.wraps,
       note: this.ready
-        ? `Lab positions are recorded Digitraffic AIS (historical replay). Attack overlays are synthetic. OSNMA: ${this.protocolOsnmaStatus === 'authenticated' ? 'ICD protocol demo (shared nav-data auth)' : this.protocolOsnmaStatus}. GNSS/IMU are fixtures/reconstructed — not ship black-box tapes.`
+        ? `Lab positions are recorded Digitraffic AIS (historical replay). Attacks are injected only into the simulated ships. OSNMA: ${this.protocolOsnmaStatus === 'authenticated' ? 'ICD test vector (shared nav-data auth)' : this.protocolOsnmaStatus}. Other recorded ships carry reconstructed GNSS/IMU; the lab vessel carries its own recorded sensors.`
         : 'Waiting for Digitraffic recording cache.',
       osnma_protocol_status: this.protocolOsnmaStatus,
     };

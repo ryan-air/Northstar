@@ -26,6 +26,26 @@ export function checkRfLab(
     };
   }
 
+  // Instrumented vessel, but no capture covers this moment: say when the captures were.
+  if (result.status === 'unavailable') {
+    return {
+      entity_id: entityId,
+      check_id: 'rf_lab',
+      status: 'unavailable',
+      anomaly_score: null,
+      severity: 'none',
+      observed_at: nowIso,
+      explanation: result.reason ?? 'No RF capture covers this time.',
+      source_ids: [result.layout_id],
+      quality: 0,
+      freshness: 0,
+      reliability: 0,
+      missing_reason: 'No RF capture at this time',
+      evidence: { mode: result.mode },
+      hard_alert: false,
+    };
+  }
+
   const overlay = result.spoof_overlay
     ? ` Overlay: ${result.spoof_overlay}.`
     : '';
@@ -122,6 +142,25 @@ export function checkSpatialAoa(
       freshness: 0,
       reliability: 0,
       missing_reason: 'No spatial_aoa / rf_lab result',
+      evidence: {},
+      hard_alert: false,
+    };
+  }
+
+  if (result.status === 'unavailable') {
+    return {
+      entity_id: entityId,
+      check_id: 'spatial_aoa',
+      status: 'unavailable',
+      anomaly_score: null,
+      severity: 'none',
+      observed_at: nowIso,
+      explanation: result.reason ?? 'No RF capture covers this time.',
+      source_ids: [result.layout_id],
+      quality: 0,
+      freshness: 0,
+      reliability: 0,
+      missing_reason: 'No RF capture at this time',
       evidence: {},
       hard_alert: false,
     };

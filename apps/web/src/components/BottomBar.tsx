@@ -22,8 +22,8 @@ const SEC_SCENARIOS: Scenario[] = [
   { id: 'signed_tamper', label: 'Sig tamper', hint: 'Alter field after sign' },
   { id: 'signed_replay', label: 'Sig replay', hint: 'Old sequence resent' },
   { id: 'stale_clock_skew', label: 'Clock skew', hint: 'Provider B timestamps aged' },
-  { id: 'osnma_auth', label: 'OSNMA auth', hint: 'Protocol verification demo — authenticated' },
-  { id: 'osnma_failure', label: 'OSNMA fail', hint: 'Protocol verification demo — failed' },
+  { id: 'osnma_auth', label: 'OSNMA auth', hint: 'ICD test vector — authenticated' },
+  { id: 'osnma_failure', label: 'OSNMA fail', hint: 'ICD test vector — failed' },
   { id: 'rf_aoa_spoof_cluster', label: 'RF AoA spoof', hint: 'Synthetic spoof overlay on real 2-ant IQ' },
 ];
 

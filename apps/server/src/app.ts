@@ -376,7 +376,7 @@ export class NorthstarApp {
           this.pipeline.setOsnma(id, {
             status: 'unavailable',
             observed_at: r.observed_at,
-            reason: 'ICD protocol demo bound to full-stack Hist Lab vessel only',
+            reason: 'ICD test-vector result is bound to the full-stack Lab vessel only',
             mode: 'not_connected',
           });
         }
@@ -720,7 +720,20 @@ export class NorthstarApp {
       this.broadcast({ type: 'alert', payload: alert });
     }
     const cap = lab.captures.find((c) => tMs >= c.startMs - 60_000 && tMs <= c.endMs + 60_000);
-    this.pipeline.setRfLab(lab.entityId, cap ? cap.result : null);
+    if (cap) this.pipeline.setRfLab(lab.entityId, cap.result);
+    else if (lab.captures.length > 0) {
+      // Outside a capture: unavailable, but say when the captures were and what they showed.
+      const hm = (ms: number) => new Date(ms).toISOString().slice(11, 16);
+      const list = lab.captures.map((c) => `${c.id} ${hm(c.startMs)} UTC (${c.result.status})`).join(', ');
+      const c0 = lab.captures[0]!.result;
+      this.pipeline.setRfLab(lab.entityId, {
+        ...c0,
+        observed_at: new Date(tMs).toISOString(),
+        status: 'unavailable',
+        aoa_status: 'unavailable',
+        reason: `No RF capture at this time. Recorded captures: ${list}.`,
+      });
+    } else this.pipeline.setRfLab(lab.entityId, null);
     if (lab.attestation) this.pipeline.setAttestation(lab.entityId, lab.attestation);
   }
 

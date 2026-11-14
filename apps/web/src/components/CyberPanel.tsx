@@ -204,14 +204,14 @@ export function CyberPanel() {
           disabled={!!busy}
           onClick={() => void runScenario('signed_tamper')}
         >
-          Tamper demo
+          Tamper test
         </button>
         <button
           type="button"
           disabled={!!busy}
           onClick={() => void runScenario('signed_replay')}
         >
-          Replay demo
+          Replay test
         </button>
         <button
           type="button"
@@ -377,8 +377,8 @@ export function CyberPanel() {
         {summary?.osnma.lab_protocol ? (
           <>
             <br />
-            Hist Lab: <span className="mono">OSNMA {summary.osnma.lab_protocol}</span> (protocol
-            demo — not live SIS)
+            Hist Lab: <span className="mono">OSNMA {summary.osnma.lab_protocol}</span> (ICD test
+            vector — not live signal)
           </>
         ) : null}
         <br />
@@ -475,7 +475,7 @@ export function CyberPanel() {
               style={{ marginTop: 6, fontSize: 11 }}
               onClick={() => void runScenario(a.demo!.id as Parameters<typeof runScenario>[0])}
             >
-              Run demo: {a.demo.id}
+              Run: {a.demo.id}
             </button>
           )}
         </div>
