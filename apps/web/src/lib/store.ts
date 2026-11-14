@@ -77,7 +77,9 @@ export const useStore = create<NorthstarStore>((set, get) => ({
 
 export function connectWs(): () => void {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const url = `${proto}://${location.host}/ws`;
+  const wsToken = (import.meta as { env?: Record<string, string | undefined> }).env
+    ?.VITE_NORTHSTAR_WS_TOKEN;
+  const url = `${proto}://${location.host}/ws${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`;
   let ws: WebSocket | null = null;
   let closed = false;
   let retry: ReturnType<typeof setTimeout> | undefined;

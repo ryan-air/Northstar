@@ -13,6 +13,7 @@ import { b64ToBytes, canonicalBytes, type JsonValue } from '@northstar/core';
 import * as ed from '@noble/ed25519';
 import { NorthstarApp } from './app.js';
 import { REPO_ROOT } from './config.js';
+import { bearerOk, isAdminRequest, isLoopbackHost, resolveAdminToken, wsTokenOk } from './security/adminAuth.js';
 import { labReturnSummary, listLabReturns, loadLabReturn } from './lab/labReturn.js';
 
 async function main() {
@@ -43,19 +44,23 @@ async function main() {
   await server.register(websocket);
 
   const testMode = process.env.NODE_ENV === 'test' || !!process.env.VITEST;
-  const adminToken =
-    process.env.NORTHSTAR_ADMIN_TOKEN ?? (testMode ? null : 'northstar-demo-admin');
-  if (!process.env.NORTHSTAR_ADMIN_TOKEN && !testMode) {
-    server.log.warn(
-      'NORTHSTAR_ADMIN_TOKEN is unset; admin routes require demo token "northstar-demo-admin"',
-    );
+  const adminCfg = resolveAdminToken({
+    envToken: process.env.NORTHSTAR_ADMIN_TOKEN,
+    testMode,
+    host: app.env.host,
+    allowDemo: process.env.NORTHSTAR_ALLOW_DEMO_ADMIN === 'true',
+  });
+  const adminToken = adminCfg.token;
+  if (adminCfg.warning) server.log.warn(adminCfg.warning);
+  const wsToken = process.env.NORTHSTAR_WS_TOKEN?.trim() || null;
+  if (!wsToken && !isLoopbackHost(app.env.host)) {
+    server.log.warn(`NORTHSTAR_WS_TOKEN is unset; /ws on ${app.env.host} is readable by anyone who can reach it`);
   }
   const requireAdmin = async (
     req: { headers: { authorization?: string } },
     reply: { code: (status: number) => { send: (body: unknown) => unknown } },
   ) => {
-    if (!adminToken) return;
-    if (req.headers.authorization !== `Bearer ${adminToken}`) {
+    if (!bearerOk(req.headers.authorization, adminToken)) {
       return reply.code(401).send({ error: 'admin_authorization_required' });
     }
   };
@@ -272,7 +277,7 @@ async function main() {
   // one unless an admin sends replace: true.
   app.enrolToken();
   server.post('/api/devices/enrol', async (req, reply) => {
-    const isAdmin = !!adminToken && req.headers.authorization === `Bearer ${adminToken}`;
+    const isAdmin = isAdminRequest(req.headers.authorization, adminToken);
     const tokenHeader = req.headers['x-northstar-enrol-token'];
     const result = await app.enrolDevice(
       (req.body ?? {}) as Parameters<typeof app.enrolDevice>[0],
@@ -473,7 +478,14 @@ async function main() {
     return lines.slice(-50).map((l) => JSON.parse(l));
   });
 
-  server.get('/ws', { websocket: true }, (socket) => {
+  server.get('/ws', {
+    websocket: true,
+    preValidation: async (req, reply) => {
+      if (!wsTokenOk(req.query, req.headers.authorization, wsToken)) {
+        return reply.code(401).send({ error: 'ws_token_required' });
+      }
+    },
+  }, (socket) => {
     const unsub = app.subscribe((msg) => {
       try {
         socket.send(JSON.stringify(msg));

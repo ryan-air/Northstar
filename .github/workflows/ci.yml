@@ -19,6 +19,12 @@ jobs:
       - run: rm -rf packages/*/dist && npm run build
       - run: npm run typecheck
       - run: npm test
+      # Lab-return importer self-test (fills a copy of the request template, checks verdicts).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install openpyxl==3.1.5
+      - run: npm run lab:test
       # P5.3: harness on the frozen snapshot, then fixed gates.
       - run: npx tsx scripts/eval-pipeline.ts --n 10 --no-legacy --out /tmp/eval_pipeline_metrics.json
       - run: npx tsx scripts/eval/check-gates.ts --metrics /tmp/eval_pipeline_metrics.json
