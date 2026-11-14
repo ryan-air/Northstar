@@ -1,0 +1,49 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "region": "gulf_of_finland",
+    "note": "Simplified coastal land polygons for demo geographic checks. Not a certified ENC. Derived/hand-simplified for hackathon use; OpenStreetMap/Natural Earth attribution in README."
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "land_finland_south",
+      "properties": { "name": "Finland south coast (simplified)", "kind": "land" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [22.0, 60.05], [22.5, 60.15], [23.0, 60.2], [23.5, 60.25], [24.0, 60.2],
+          [24.5, 60.18], [24.9, 60.16], [25.2, 60.2], [25.6, 60.25], [26.0, 60.35],
+          [26.5, 60.4], [27.0, 60.45], [27.5, 60.5], [28.0, 60.45], [28.5, 60.4],
+          [29.0, 60.35], [29.5, 60.3], [30.0, 60.25], [30.5, 60.2], [31.0, 60.15],
+          [31.0, 61.0], [22.0, 61.0], [22.0, 60.05]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "land_estonia_north",
+      "properties": { "name": "Estonia north coast (simplified)", "kind": "land" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [22.0, 59.0], [31.0, 59.0], [31.0, 59.35], [30.0, 59.4], [29.0, 59.42],
+          [28.0, 59.4], [27.5, 59.4], [27.0, 59.42], [26.5, 59.45], [26.0, 59.48],
+          [25.5, 59.48], [25.0, 59.46], [24.7, 59.44], [24.5, 59.42], [24.0, 59.4],
+          [23.5, 59.35], [23.0, 59.3], [22.5, 59.25], [22.0, 59.2], [22.0, 59.0]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "land_kotlin_approx",
+      "properties": { "name": "Kotlin Island approx", "kind": "land" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [29.68, 59.97], [29.82, 59.97], [29.82, 60.03], [29.68, 60.03], [29.68, 59.97]
+        ]]
+      }
+    }
+  ]
+}

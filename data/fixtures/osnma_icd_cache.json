@@ -1,0 +1,22 @@
+{
+  "status": "authenticated",
+  "observed_at": "2026-11-14T02:11:32.196562Z",
+  "satellite_id": "E11",
+  "message_type": "I/NAV",
+  "reason": null,
+  "mode": "protocol_verification_demo",
+  "public_key_id": "OSNMA_PublicKey.xml / ICD configuration_1",
+  "library": "OSNMAlib (Algafix/OSNMA)",
+  "live": "not_connected",
+  "disclaimer": "OSNMA authenticates supported Galileo navigation-message data, not the PVT solution.",
+  "crypto": {
+    "vector": "icd_test_vectors/configuration_1",
+    "vector_file": "16_AUG_2023_GST_05_00_01_fixed.csv",
+    "tags_authenticated": 12532,
+    "nav_data_authenticated": 6144,
+    "kroot_authenticated": 176,
+    "errors": 0,
+    "tesla": "delayed key chain verification via OSNMAlib",
+    "ecdsa": "KROOT / public-key material from GSC test package"
+  }
+}

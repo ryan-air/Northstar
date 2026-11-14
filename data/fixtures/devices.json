@@ -1,0 +1,56 @@
+[
+  {
+    "device_id": "DEV-VESSEL-001",
+    "entity_id": "LAB-266420000",
+    "public_key": "94y5BNPnnFGhgCNXn7uGBmH2Cs725qKA2k2L/TBpQn0=",
+    "key_id": "DEV-VESSEL-001-key-1",
+    "enrolled_at": "2026-11-12T00:47:54.304Z",
+    "revoked_at": null,
+    "assurance_level": "software",
+    "firmware_version": "1.0.0"
+  },
+  {
+    "device_id": "DEV-TEST",
+    "entity_id": "LAB-230685000",
+    "public_key": "xM/GSOA69J/0k1DenEnrbGRc6Ej2lx0HfMjjMp5KDwI=",
+    "key_id": "DEV-TEST-key-1",
+    "enrolled_at": "2026-11-14T02:31:04.668Z",
+    "revoked_at": null,
+    "assurance_level": "software",
+    "signature_alg": "ed25519",
+    "firmware_version": "1.0.0"
+  },
+  {
+    "device_id": "DEV-NO-CHALLENGE",
+    "entity_id": "LAB-230685000",
+    "public_key": "m3LIzkv1kTI0A6v3D6PdqcVE+nGQZZ8ysrgozlpwbRI=",
+    "key_id": "DEV-NO-CHALLENGE-key-1",
+    "enrolled_at": "2026-11-14T02:31:04.663Z",
+    "revoked_at": null,
+    "assurance_level": "software",
+    "signature_alg": "ed25519",
+    "firmware_version": "1.0.0"
+  },
+  {
+    "device_id": "DEV-REV",
+    "entity_id": "LAB-230685000",
+    "public_key": "8pPzcBf6fwnjCTPnMHLeIx3GYGD+SQLt/tj6CTcHAo4=",
+    "key_id": "DEV-REV-key-1",
+    "enrolled_at": "2026-11-14T02:31:04.682Z",
+    "revoked_at": null,
+    "assurance_level": "software",
+    "signature_alg": "ed25519",
+    "firmware_version": "1.0.0"
+  },
+  {
+    "device_id": "DEV-P256",
+    "entity_id": "LAB-230685000",
+    "public_key": "BGr1rrIlnVAKq1NF434MiRt2MS/uyv/ES5VftzGBeWTAYohzB01gPqJpCQsBr2sNAb8qp813ViLXCfYZ+JM5QSk=",
+    "key_id": "DEV-P256-key-1",
+    "enrolled_at": "2026-11-14T02:31:04.723Z",
+    "revoked_at": null,
+    "assurance_level": "hardware",
+    "signature_alg": "ecdsa-p256",
+    "firmware_version": "1.0.0"
+  }
+]

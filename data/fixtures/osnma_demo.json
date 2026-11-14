@@ -1,0 +1,30 @@
+{
+  "note": "Protocol verification demo fixtures — not a live receiver. Labels must remain protocol_verification_demo.",
+  "authenticated": {
+    "status": "authenticated",
+    "satellite_id": "E11",
+    "message_type": "I/NAV",
+    "reason": null,
+    "mode": "protocol_verification_demo",
+    "public_key_id": "OSNMA-PK-GSC-TESTVECTOR",
+    "tesla_chain": "HKROOT/DSK demo chain step 4",
+    "disclaimer": "OSNMA authenticates supported Galileo navigation-message data, not the PVT solution."
+  },
+  "failed": {
+    "status": "failed",
+    "satellite_id": "E11",
+    "message_type": "I/NAV",
+    "reason": "MAC verification failed against delayed TESLA key (fixture attack vector)",
+    "mode": "protocol_verification_demo",
+    "public_key_id": "OSNMA-PK-GSC-TESTVECTOR",
+    "disclaimer": "Failed nav-data authentication is evidence against message integrity; it does not alone prove PVT spoofing."
+  },
+  "pending": {
+    "status": "pending",
+    "satellite_id": "E19",
+    "message_type": "I/NAV",
+    "reason": "Waiting for delayed TESLA key (protocol delayed authentication)",
+    "mode": "protocol_verification_demo",
+    "public_key_id": "OSNMA-PK-GSC-TESTVECTOR"
+  }
+}

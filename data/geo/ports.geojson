@@ -1,0 +1,68 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "port_helsinki",
+      "properties": { "name": "Helsinki", "kind": "port" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[24.90, 60.14], [24.98, 60.14], [24.98, 60.18], [24.90, 60.18], [24.90, 60.14]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "port_tallinn",
+      "properties": { "name": "Tallinn", "kind": "port" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[24.70, 59.43], [24.82, 59.43], [24.82, 59.48], [24.70, 59.48], [24.70, 59.43]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "port_kotka",
+      "properties": { "name": "Kotka", "kind": "port" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[26.88, 60.44], [26.98, 60.44], [26.98, 60.48], [26.88, 60.48], [26.88, 60.44]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "port_hamina",
+      "properties": { "name": "Hamina", "kind": "port" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[27.15, 60.50], [27.22, 60.50], [27.22, 60.54], [27.15, 60.54], [27.15, 60.50]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "port_primorsk",
+      "properties": { "name": "Primorsk", "kind": "port" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[28.58, 60.34], [28.68, 60.34], [28.68, 60.38], [28.58, 60.38], [28.58, 60.34]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "port_ustluga",
+      "properties": { "name": "Ust-Luga", "kind": "port" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[28.35, 59.65], [28.48, 59.65], [28.48, 59.72], [28.35, 59.72], [28.35, 59.65]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "port_sillamae",
+      "properties": { "name": "Sillamäe", "kind": "port" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[27.72, 59.39], [27.82, 59.39], [27.82, 59.43], [27.72, 59.43], [27.72, 59.39]]]
+      }
+    }
+  ]
+}

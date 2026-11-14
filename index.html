@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SockSync+ | Manage Subscription</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#FFF7EF;--ink:#2B2340;--muted:#7C7189;--coral:#FF6B5B;--mint:#22A86A;--line:#F1E4D6;--card:#fff}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:Nunito,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;-webkit-tap-highlight-color:transparent}
+button{font-family:inherit}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;height:60px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:900;font-size:20px;letter-spacing:-.02em}
+.logo svg{width:24px;height:29px}
+.logo em{color:var(--coral);font-style:normal}
+.nav{display:flex;gap:20px;font-weight:700;color:var(--muted);font-size:14px}
+.nav span{cursor:pointer}.nav span.on{color:var(--ink)}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--coral);color:#fff;display:grid;place-items:center;font-weight:900;font-size:14px}
+#progress{background:var(--ink);color:#fff;padding:8px 24px 10px;font-size:13px;font-weight:700;position:sticky;top:60px;z-index:19}
+#progress .prow{display:flex;justify-content:space-between;max-width:912px;margin:0 auto}
+#progress .bar{height:6px;background:#463c5c;border-radius:9px;margin:6px auto 0;overflow:hidden;max-width:912px}
+#progress .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--coral),#FFC24B);transition:width .9s cubic-bezier(.3,1.5,.5,1)}
+main{max-width:960px;margin:0 auto;padding:28px 20px 90px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px;margin-bottom:18px;box-shadow:0 3px 0 var(--line)}
+.hero{display:flex;gap:24px;justify-content:space-between;align-items:center;flex-wrap:wrap;background:linear-gradient(135deg,#fff 40%,#FFEBDD)}
+h1{font-size:28px;line-height:1.15;margin:6px 0 10px;font-weight:900;letter-spacing:-.01em}
+h2{font-size:18px;margin:0 0 12px;font-weight:900}
+.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:900;color:var(--coral);margin:0}
+.muted{color:var(--muted)}
+.price{font-size:42px;font-weight:900;margin-top:8px}.price span{font-size:16px;color:var(--muted);font-weight:700}
+.actions{display:flex;flex-direction:column;gap:10px;min-width:250px}
+.btn{font-weight:800;font-size:15px;border:0;border-radius:14px;padding:12px 18px;cursor:pointer;background:#F3ECE4;color:var(--ink);transition:transform .15s,background .2s,box-shadow .2s}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(2px)}
+.btn.primary{background:var(--mint);color:#fff;box-shadow:0 4px 0 #17804f}
+.btn.ghost{background:#fff;border:2px solid var(--line)}
+.btn.decoy{background:var(--coral);color:#fff;box-shadow:0 4px 0 #d9473a;display:flex;flex-direction:column;align-items:center;line-height:1.1}
+.btn.decoy small{font-size:10px;font-weight:700;opacity:.8;margin-top:2px}
+.btn.big{font-size:20px;padding:16px 36px}
+.btn.huge{font-size:22px;padding:18px;width:100%}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.link{background:none;border:0;color:#B9AEC4;font-size:13px;text-decoration:underline;cursor:pointer;padding:6px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.stat b{display:block;font-size:34px;font-weight:900}.stat span{color:var(--muted);font-weight:700}
+.setting{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-top:1px solid var(--line);font-weight:700}
+.toggle{width:46px;height:26px;border-radius:20px;background:var(--mint);position:relative;cursor:pointer;flex:none}
+.toggle::after{content:"";position:absolute;right:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff}
+.pill{background:#FFF0E3;color:var(--coral);font-weight:800;padding:4px 10px;border-radius:20px;font-size:13px}
+.foot{text-align:center;font-size:11px;color:#DCD3C8;margin-top:56px;line-height:2}
+.foot a{color:#D6CCC0;cursor:pointer;display:inline-block;transition:transform .22s ease-out;position:relative}
+.center{text-align:center}.narrow{max-width:660px;margin-left:auto;margin-right:auto}
+.swapper{display:flex;gap:16px;justify-content:center;margin:26px 0}
+.swapper.flip{flex-direction:row-reverse}
+.check{display:flex;gap:10px;align-items:flex-start;text-align:left;font-size:13px;color:var(--muted);background:var(--bg);padding:12px 14px;border-radius:12px;cursor:pointer;font-weight:600}
+.check input{margin-top:2px;accent-color:var(--mint);width:16px;height:16px;flex:none}
+.fine{font-size:12px;color:#c0392b;font-weight:800;margin-top:14px}
+.family{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:20px 0 10px}
+.sock{background:var(--bg);border-radius:16px;padding:14px 10px;text-align:center}
+.sock .face svg{width:76px;height:92px}
+.sock b{display:block;font-weight:900}.sock span{font-size:12px;color:var(--muted);font-weight:600}
+#guiltline{font-weight:800;color:var(--coral);min-height:24px}
+.familybtns{display:flex;flex-direction:column;gap:14px;justify-content:center;align-items:center;margin-top:18px}
+#stay,#leave{transition:transform .25s}
+.tear{animation:drip 1.1s infinite ease-in;transform-box:fill-box}
+.tear.b{animation-delay:.5s}
+@keyframes drip{0%{transform:translateY(0);opacity:1}100%{transform:translateY(22px);opacity:0}}
+.reason{display:flex;gap:10px;align-items:center;padding:12px 14px;border:2px solid var(--line);border-radius:12px;margin-top:8px;cursor:pointer;font-weight:700}
+.reason input{accent-color:var(--coral)}
+.rebut{display:none;font-size:13px;color:var(--coral);font-weight:800;padding:6px 14px 0}
+.rebut.show{display:block}
+.lbl{display:block;font-weight:800;margin:22px 0 8px}
+.filter{font-size:12px;font-weight:800;background:#EAF8F0;color:var(--mint);padding:8px 12px;border-radius:10px 10px 0 0;transition:background .2s}
+.filter.flash{background:#FFE0DC;color:var(--coral)}
+textarea{width:100%;font:inherit;font-size:15px;border:2px solid var(--line);border-top:0;border-radius:0 0 12px 12px;padding:12px;resize:vertical;outline:none}
+.row{display:flex;justify-content:space-between;align-items:center;margin:8px 0 16px}
+.overlay{position:fixed;inset:0;background:rgba(43,35,64,.62);z-index:50;display:grid;place-items:center;padding:16px}
+.modal{background:#fff;border-radius:24px;max-width:470px;width:100%;padding:34px 26px 22px;text-align:center;position:relative;animation:pop .35s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+.x{position:absolute;width:18px;height:18px;border:0;background:none;color:#D5CCD9;font-size:14px;cursor:pointer;padding:0;line-height:18px;transition:all .25s}
+.burst{display:inline-block;background:#FFC24B;color:var(--ink);font-weight:900;padding:6px 16px;border-radius:30px;transform:rotate(-4deg);font-size:14px;letter-spacing:.1em}
+.offer{font-size:56px;font-weight:900;color:var(--coral);line-height:1;margin:8px 0 2px}
+.offer span{display:block;font-size:16px;color:var(--muted)}
+.timer{font-weight:800;color:#c0392b;margin:10px 0 16px}
+.hold{position:relative;overflow:hidden;width:100%;margin-top:14px;border:0;border-radius:12px;background:#F6F1EB;color:#A497B0;font-size:13px;font-weight:700;padding:13px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none}
+.hold .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:#FFD6D1}
+.hold .lbl2{position:relative}
+.modal .fine{color:#B9AEC4;font-weight:600;font-size:11px}
+.typed{display:flex;justify-content:center;gap:6px;min-height:56px;margin:22px 0 6px;flex-wrap:wrap}
+.typed i{font-style:normal;width:36px;height:48px;border-radius:10px;background:var(--bg);border:2px solid var(--line);display:grid;place-items:center;font-size:24px;font-weight:900;font-family:ui-monospace,Menlo,monospace}
+.typed .caret{width:3px;height:48px;background:var(--coral);border-radius:2px;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:0}}
+.shake{animation:shake .4s}
+@keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+.hint{min-height:22px;font-weight:800;color:var(--coral);font-size:14px}
+.kb{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-top:14px}
+.key{min-height:50px;border:0;border-radius:12px;background:var(--ink);color:#fff;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 3px 0 #120d1d}
+.key:active{transform:translateY(2px);box-shadow:none}
+.key.wide{grid-column:span 2;background:#4A3F63}
+code{background:var(--bg);padding:2px 8px;border-radius:8px;color:var(--coral);font-family:ui-monospace,Menlo,monospace}
+.clock{font-size:60px;font-weight:900;font-family:ui-monospace,Menlo,monospace;margin:16px 0 4px;letter-spacing:.04em}
+.caller{color:var(--muted);font-weight:700;font-size:14px;margin-bottom:22px}
+.pbar2{height:14px;background:var(--bg);border-radius:10px;overflow:hidden;margin:22px 0 8px;border:1px solid var(--line)}
+.pbar2 i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--mint),#7CE0A9);transition:width .8s}
+.log{list-style:none;padding:0;text-align:left;max-width:380px;margin:16px auto 0;font-weight:700}
+.log li{padding:6px 0;animation:pop .3s}
+.log li::before{content:"✓ ";color:var(--mint);font-weight:900}
+.donecheck{width:76px;height:76px;border-radius:50%;background:var(--mint);color:#fff;font-size:42px;font-weight:900;display:grid;place-items:center;margin:0 auto 6px;box-shadow:0 5px 0 #17804f}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:22px 0}
+.stats div{background:var(--bg);border-radius:14px;padding:14px 8px}
+.stats b{display:block;font-size:26px;font-weight:900}
+.stats span{font-size:12px;color:var(--muted);font-weight:700}
+.reveal ol{padding-left:22px;margin:0}
+.reveal li{margin:9px 0;line-height:1.45}
+.reveal li b{color:var(--coral)}
+#toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,30px);background:var(--ink);color:#fff;padding:13px 20px;border-radius:14px;font-weight:700;font-size:14px;opacity:0;pointer-events:none;transition:all .3s;z-index:100;max-width:min(92vw,520px);text-align:center;box-shadow:0 10px 30px rgba(43,35,64,.3)}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+canvas#mz{display:block;border-radius:14px;margin:20px auto 10px;box-shadow:0 0 0 2px var(--line)}
+.maze-wrap{display:flex;justify-content:center}
+.pad{display:grid;grid-template-columns:repeat(3,52px);gap:6px;justify-content:center;margin:10px 0}
+.pad button{height:46px;border:0;border-radius:10px;background:var(--ink);color:#fff;font-weight:900;font-size:18px;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+.pad button.on{background:var(--coral)}
+.pad .w{grid-column:2}.pad .a{grid-column:1;grid-row:2}.pad .s{grid-column:2;grid-row:2}.pad .d{grid-column:3;grid-row:2}
+.legend{font-size:13px;font-weight:800;color:var(--muted);margin:0}
+.modal.terms{text-align:left;max-width:560px}
+.tbox{height:300px;overflow-y:auto;border:2px solid var(--line);border-radius:12px;padding:6px 16px;font-size:13px;color:#4a4060;background:#FFFCF8}
+.tbox h3{font-size:14px;margin:14px 0 4px;color:var(--ink)}
+.tbox p{margin:4px 0}
+.tbtns{display:flex;gap:12px;justify-content:center;margin-top:12px}
+.tbtns .btn{min-width:120px;background:var(--mint);color:#fff;box-shadow:0 4px 0 #17804f}
+.cartbtn{font-weight:800;font-size:14px;border:2px solid var(--line);background:#fff;border-radius:12px;padding:7px 12px;cursor:pointer;color:var(--ink)}
+.cartbtn b{background:var(--coral);color:#fff;border-radius:10px;padding:1px 7px;margin-left:4px}
+.fp{font-size:10px;color:#C9BFB3;line-height:1.4;margin:6px 0 0}
+.cx{color:inherit;cursor:pointer;text-decoration:none}
+.foot .cx,.fp .cx{color:#C3B9AD}
+.cartlist{border:2px solid var(--line);border-radius:12px;padding:4px 14px;margin:10px 0}
+.citem{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-weight:700;font-size:14px}
+.citem:last-child{border-bottom:0}
+.rm{font-size:10px;color:#C9BFB3;cursor:pointer;margin-left:8px;text-decoration:underline}
+.pop{position:fixed;z-index:60;width:310px;background:#fff;border:2px solid var(--coral);border-radius:16px;padding:16px;box-shadow:0 16px 40px rgba(43,35,64,.25);animation:pop .3s cubic-bezier(.3,1.6,.5,1);text-align:left}
+.pop p{font-size:13px;color:var(--muted);font-weight:700;margin:6px 0 12px}
+.px{position:absolute;top:4px;right:6px;width:16px;height:16px;padding:0;border:0;background:none;color:#A89DB4;font-size:15px;font-weight:700;line-height:16px;cursor:pointer}
+#bot{position:fixed;right:18px;bottom:86px;width:260px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 30px rgba(43,35,64,.18);z-index:40;overflow:hidden;animation:pop .3s}
+#bot .bh{background:var(--coral);color:#fff;font-weight:900;font-size:13px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center}
+#bot .bh button{background:none;border:0;color:#fff;font-size:16px;cursor:pointer;line-height:1}
+#bot p{margin:0;padding:12px;font-size:13px;font-weight:700}
+@media (max-width:640px){
+  .nav{display:none}.grid3{grid-template-columns:1fr}.family{grid-template-columns:repeat(2,1fr)}
+  h1{font-size:23px}.kb{grid-template-columns:repeat(6,1fr)}.clock{font-size:42px}
+  .stats{grid-template-columns:repeat(2,1fr)}.actions{min-width:0;width:100%}.btn.big{padding:14px 26px}
+  .typed i{width:28px;height:40px;font-size:20px}.typed .caret{height:40px}
+  #bot{right:10px;left:10px;width:auto;bottom:80px}
+}
+
+/* style pass: less templated */
+body{font-family:'Instrument Sans',system-ui,-apple-system,sans-serif}
+h1,h2,.price,.stat b,.offer,.logo span,.donecheck+h1{font-family:'Fraunces',Georgia,serif;font-weight:700;letter-spacing:-.02em}
+h1{font-size:30px}
+.card{border-radius:8px;box-shadow:none;border-color:#E9DCCB}
+.hero{background:#fff;border-left:4px solid var(--coral)}
+.btn{border-radius:8px;font-weight:700}
+.btn.primary,.btn.decoy,.donecheck{box-shadow:none}
+.grid3{gap:0;background:#fff;border:1px solid #E9DCCB;border-radius:8px;margin-bottom:18px;overflow:hidden}
+.grid3 .card{border:0;border-radius:0;margin:0;border-right:1px solid #E9DCCB;padding:18px 22px}
+.grid3 .card:last-child{border-right:0}
+.stat b{font-size:30px}
+#progress .bar i{background:var(--coral)}
+.modal{border-radius:10px}
+.pop{border-radius:8px;border-width:1px;box-shadow:0 12px 30px rgba(43,35,64,.2)}
+.sock,.reason,.stats div,.typed i,.tbox,.cartlist{border-radius:8px}
+.eyebrow{letter-spacing:.08em}
+@media (max-width:640px){.grid3 .card{border-right:0;border-bottom:1px solid #E9DCCB}.grid3 .card:last-child{border-bottom:0}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="logo" id="logo"></div>
+  <div style="display:flex;gap:12px;align-items:center"><button class="cartbtn" id="cartbtn">🛒 Cart <b id="cartn">4</b></button><div class="avatar">VF</div></div>
+</header>
+<div id="progress" hidden><div class="prow"><span id="plabel"></span><span id="ppct"></span></div><div class="bar"><i id="pbar"></i></div></div>
+<main id="stage"></main>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="bot" hidden></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const stage = $('#stage'), prog = $('#progress'), toastEl = $('#toast'), bot = $('#bot');
+const startCart = () => [
+  {n: 'Platinum Toe™ upgrade', p: 9.99}, {n: 'Winter Wool 12-pack', p: 39.99},
+  {n: 'Sock Insurance (Gold)', p: 4.99}, {n: "Birthday card for Gerald", p: 2.49}];
+const fresh = () => ({cart: startCart(), cancelSpot: 0, wantsCancel: false, emptyProt: false, start:null, clicks:0, loops:0, guilt:0, brokeOnce:false, autocorrected:false, offerResets:0, flow:false, mazeResets:0});
+let state = fresh();
+let cleanups = [];
+const every = (ms, f) => { const id = setInterval(f, ms); cleanups.push(() => clearInterval(id)); return id; };
+const after = (ms, f) => { const id = setTimeout(f, ms); cleanups.push(() => clearTimeout(id)); return id; };
+const listen = (t, ev, f, o) => { t.addEventListener(ev, f, o); cleanups.push(() => t.removeEventListener(ev, f, o)); };
+const rand = (a, b) => Math.random() * (b - a) + a;
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+function go(fn){ cleanups.forEach(f => f()); cleanups = []; stage.innerHTML = ''; fn(); window.scrollTo({top:0}); }
+let toastT;
+function toast(msg, ms = 2800){ toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), ms); }
+function setProgress(step, pct, label){ prog.hidden = false; $('#plabel').textContent = label || `Cancellation progress · Step ${step} of 6`; $('#ppct').textContent = pct + '%'; requestAnimationFrame(() => $('#pbar').style.width = pct + '%'); }
+function hideProgress(){ prog.hidden = true; $('#pbar').style.width = '0%'; }
+function backToStart(msg){ state.loops++; go(renderAccount); toast(msg, 3600); }
+document.addEventListener('click', () => { if (state.start) state.clicks++; }, true);
+
+function countdown(el, from, onZero){
+  let s = from;
+  const fmt = () => el.textContent = `00:${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  fmt();
+  every(1000, () => { s--; if (s < 0) { s = from; onZero && onZero(); } fmt(); });
+}
+
+/* ---------- sock drawing ---------- */
+function sockSVG(color, mood){
+  const mouths = ['M41 55 Q50 64 59 55', 'M42 58 H58', 'M42 61 Q50 53 58 61', 'M40 63 Q50 51 60 63'];
+  const brows = mood >= 1
+    ? `<path d="M36 ${mood>=2?38:37} L45 ${mood>=2?33:35}" stroke="#2B2340" stroke-width="2.6" stroke-linecap="round"/><path d="M55 ${mood>=2?33:35} L64 ${mood>=2?38:37}" stroke="#2B2340" stroke-width="2.6" stroke-linecap="round"/>` : '';
+  const cheeks = mood === 0 ? `<circle cx="36" cy="52" r="4" fill="#fff" opacity=".35"/><circle cx="64" cy="52" r="4" fill="#fff" opacity=".35"/>` : '';
+  const tears = mood === 3 ? `<ellipse class="tear" cx="41" cy="49" rx="2.6" ry="3.6" fill="#7EC8FF"/><ellipse class="tear b" cx="59" cy="49" rx="2.6" ry="3.6" fill="#7EC8FF"/>` : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" aria-hidden="true">
+    <path d="M28 6 H72 V66 Q72 74 80 78 L88 82 Q100 90 94 104 Q88 116 72 110 L36 96 Q24 91 26 76 L28 66 Z" fill="${color}"/>
+    <rect x="28" y="6" width="44" height="13" fill="#fff" opacity=".45"/>
+    <rect x="28" y="23" width="44" height="4" fill="#fff" opacity=".3"/>
+    <path d="M80 78 L88 82 Q100 90 94 104 Q90 112 82 112 Q90 96 80 78Z" fill="#fff" opacity=".25"/>
+    ${brows}${cheeks}
+    <circle cx="42" cy="44" r="3.8" fill="#2B2340"/><circle cx="58" cy="44" r="3.8" fill="#2B2340"/>
+    <circle cx="43.2" cy="42.8" r="1.2" fill="#fff"/><circle cx="59.2" cy="42.8" r="1.2" fill="#fff"/>
+    <path d="${mouths[mood]}" stroke="#2B2340" stroke-width="3" stroke-linecap="round" fill="none"/>
+    ${tears}
+  </svg>`;
+}
+$('#logo').innerHTML = sockSVG('#FF6B5B', 0) + '<span>SockSync<em>+</em></span>';
+document.querySelectorAll('.nav span[data-n]').forEach(n => n.onclick = () => toast({
+  socks: 'Your socks are busy missing you.',
+  billing: 'Billing is view-only. Viewing is billed separately.',
+  help: 'Help is available Tuesdays, 3:07 to 3:09 AM.'
+}[n.dataset.n]));
+
+/* ---------- Sockbot (nagging) ---------- */
+const botMsgs = [
+  "Hi! I'm Sockbot 🧦 9 out of 10 feet prefer staying subscribed!",
+  "Psst. Gerald just asked about you.",
+  "Need help? I can help you stay!",
+  "Leaving? In THIS economy?",
+  "Fun fact: every cancellation makes a sock lose its partner.",
+  "Sockbot here again! Still thinking about leaving? Sockbot is still thinking about you."
+];
+let botI = 0, botHide;
+function showBot(msg){
+  bot.innerHTML = `<div class="bh"><span>🧦 Sockbot · online</span><button aria-label="close">×</button></div><p>${msg}</p>`;
+  bot.hidden = false;
+  bot.querySelector('button').onclick = e => { e.stopPropagation(); bot.hidden = true; toast('Sockbot will return. Sockbot always returns.'); };
+  clearTimeout(botHide); botHide = setTimeout(() => bot.hidden = true, 7000);
+}
+setInterval(() => { if (state.flow) showBot(botMsgs[botI++ % botMsgs.length]); }, 17000);
+
+/* ---------- Step 0: account page ---------- */
+function cartBadge(){ $('#cartn').textContent = state.cart.length; }
+function openCart(msg){
+  const old = $('#cartov'); if (old) old.remove();
+  const ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'cartov';
+  const paint = () => {
+    const tot = state.cart.reduce((a, b) => a + b.p, 0).toFixed(2);
+    ov.innerHTML = `<div class="modal terms">
+      <h1 style="font-size:22px">Your cart</h1>
+      ${msg ? `<p class="hint" style="font-size:14px">${msg}</p>` : ''}
+      <div class="cartlist">${state.cart.length ? state.cart.map((it, i) => `<div class="citem"><span>${it.n}</span><span>$${it.p.toFixed(2)} <a class="rm" data-i="${i}">remove</a></span></div>`).join('') : '<p class="muted" style="text-align:center;font-weight:700">Your cart is empty. For now.</p>'}</div>
+      <div class="citem" style="font-weight:900;border:0"><span>Total</span><span>$${tot}/mo</span></div>
+      <button class="btn primary huge" id="ckout">Checkout 🎉</button>
+      <div style="text-align:center"><button class="link" id="cclose">close cart</button></div>
+    </div>`;
+    ov.querySelectorAll('.rm').forEach(a => a.onclick = () => {
+      state.cart.splice(+a.dataset.i, 1);
+      if (!state.cart.length && !state.emptyProt) { state.emptyProt = true; state.cart.push({n: 'Empty Cart Protection™', p: 1.99}); toast('Your cart looked lonely, so we added Empty Cart Protection™.', 3600); }
+      cartBadge(); paint();
+    });
+    ov.querySelector('#ckout').onclick = () => toast(state.cart.length ? 'Checkout is temporarily available only to members who are staying.' : 'Nothing to check out. Suspicious.');
+    ov.querySelector('#cclose').onclick = () => {
+      ov.remove();
+      if (state.wantsCancel && !state.cart.length) {
+        state.wantsCancel = false;
+        go(renderAccount); toast('Cart emptied! You may now try to cancel your subscription.', 3600);
+      }
+    };
+  };
+  paint(); stage.appendChild(ov);
+}
+const pops = [
+  {t: '🎉 FLASH SALE', b: 'Sock Insurance Platinum, only $6.99/mo. Protects your socks from being cancelled.', cta: 'Protect my socks', add: {n: 'Sock Insurance (Platinum)', p: 6.99}},
+  {t: 'Gerald misses you', b: 'Add a friendship bracelet for Gerald? He would never ask, but he would like it.', cta: 'Make Gerald happy', add: {n: 'Friendship bracelet (for Gerald)', p: 3.49}},
+  {t: '❄️ Winter is coming', b: 'Your feet are statistically cold right now. Add a Thermal Toe Pack?', cta: 'Warm my toes', add: {n: 'Thermal Toe Pack', p: 12.99}},
+  {t: 'Quick question', b: 'Would you recommend SockSync+ to a friend who has feet?', cta: 'Yes, and add them', add: {n: 'Gift membership (for a friend)', p: 14.99}}
+];
+function renderAccount(){
+  state.flow = false; hideProgress(); bot.hidden = true; cartBadge();
+  const sp = state.cancelSpot;
+  const C = label => `<a class="cx" id="exit">${label}</a>`;
+  stage.innerHTML = `
+  <section class="card hero">
+    <div style="max-width:470px">
+      <p class="eyebrow">Your plan</p>
+      <h1>SockSync+ Monthly</h1>
+      <p class="muted" style="margin:0">Fresh socks, synced to your feet. Next delivery: tomorrow, and every day after that, forever.</p>
+      <div class="price">$14.99<span> / month*</span></div>
+      <p class="fp">*Price excludes sock tax, foot fees and the emotional support surcharge. Membership renews automatically every month, week, or whenever we feel like it${sp === 1 ? `. To end your membership, ${C('click here')}` : ''}. Offer not valid on feet.</p>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="upg">Upgrade to Platinum Toe™</button>
+      <button class="btn decoy" id="decoy">Cancel<small>my thoughts of leaving</small></button>
+      ${sp === 0 ? `<button class="btn ghost" id="exit">Cancel subscription</button>` : ''}
+    </div>
+  </section>
+  <section class="grid3">
+    <div class="card stat"><b>412</b><span>days of warm feet</span></div>
+    <div class="card stat"><b>6</b><span>socks who love you</span></div>
+    <div class="card stat"><b>0</b><span>times you've been cold</span></div>
+  </section>
+  <section class="card">
+    <h2>Subscription settings</h2>
+    <div class="setting"><span>Auto-renew</span><span class="toggle" id="tog"></span></div>
+    <div class="setting"><span>Sock notifications</span><span class="pill">Every 4 minutes</span></div>
+    <div class="setting"><span>Membership status</span><span class="muted">Active${sp === 2 ? ` · ${C('change')}` : ''}</span></div>
+    <div class="setting"><span>Payment method</span><span class="muted">Imaginary Card •••• 0000</span></div>
+  </section>
+  <footer class="foot">© 2026 SockSync+ Inc. A fictional company. No real socks, payments or people involved. SockSync+ reserves the right to keep you. All socks are final.${sp >= 3 ? ` Members wishing to ${C('discontinue')} may do so in writing, or here.` : ''} By reading this sentence you agree to keep reading it.</footer>`;
+
+  $('#decoy').onclick = () => toast('Done! Your thoughts of leaving have been cancelled. 💚');
+  $('#upg').onclick = () => { state.cart.push({n: 'Platinum Toe™ upgrade', p: 9.99}); cartBadge(); toast('Added to cart! 🛒'); };
+  $('#tog').onclick = () => toast('Auto-renew is locked for your convenience.');
+  $('#exit').onclick = () => {
+    if (!state.start) state.start = Date.now();
+    if (state.cart.length) { state.wantsCancel = true; openCart(`You can't cancel with ${state.cart.length} item${state.cart.length === 1 ? '' : 's'} in your cart. Please empty your cart first.`); return; }
+    showTerms();
+  };
+
+  let popOpen = false, nextPop = Date.now() + 2500, pi = 0;
+  every(400, () => {
+    if (popOpen || Date.now() < nextPop || $('#cartov') || $('#termsov')) return;
+    popOpen = true;
+    const P = pops[pi++ % pops.length];
+    const el = document.createElement('div'); el.className = 'pop';
+    el.style.left = rand(8, Math.max(10, window.innerWidth - 330)) + 'px';
+    el.style.top = rand(80, Math.max(90, window.innerHeight - 230)) + 'px';
+    el.innerHTML = `<button class="px" aria-label="close">×</button><b>${P.t}</b><p>${P.b}</p><button class="btn primary" style="width:100%">${P.cta}</button>`;
+    el.querySelector('.btn').onclick = () => { state.cart.push(P.add); cartBadge(); toast(`Added "${P.add.n}" to your cart. 🛒`); el.remove(); popOpen = false; nextPop = Date.now() + rand(6000, 9000); };
+    el.querySelector('.px').onclick = () => { el.remove(); popOpen = false; nextPop = Date.now() + rand(6000, 9000); };
+    stage.appendChild(el);
+  });
+}
+
+/* ---------- Terms & Conditions gate ---------- */
+function showTerms(){
+  const sec = (n, h, t) => `<h3>${n}. ${h}</h3><p>${t}</p>`;
+  const ov = document.createElement('div');
+  ov.className = 'overlay'; ov.id = 'termsov';
+  ov.innerHTML = `<div class="modal terms">
+    <h1 style="font-size:22px">Updated Terms of Sock</h1>
+    <p class="muted" style="margin:0 0 10px;font-size:13px;font-weight:700">Please read the entire agreement before continuing.</p>
+    <div class="tbox" id="tbox">
+      ${sec(1, 'Definitions', '"Sock" means any sock. "Member" means you. "Forever" means until SockSync+ decides otherwise, which it will not.')}
+      ${sec(2, 'Acceptance', 'By opening this window, scrolling this window, or thinking about this window, the Member agrees to these Terms.')}
+      ${sec(3, 'Sock Ownership', 'All socks remain the emotional property of SockSync+. The Member is granted a non-exclusive, non-transferable license to wear them on up to two (2) feet.')}
+      ${sec(4, 'Billing', 'Membership is billed monthly, or more often if SockSync+ feels like it. Prices may change without notice, warning, or remorse.')}
+      ${sec(5, 'Pairing', 'SockSync+ does not guarantee that socks will arrive in pairs. Lonely socks are a feature, not a bug.')}
+      ${sec(6, 'Laundry', 'The Member agrees to wash socks gently and to speak kindly to them during the spin cycle.')}
+      <h3>7. Termination</h3>
+      <p>7.1 The Member may request termination at any time, subject to the remainder of this Section.</p>
+      <p>7.2 Termination requests are processed in the order they are received, then reversed.</p>
+      <p>7.3 SockSync+ may ask the Member if they are sure, more than once, and for any reason.</p>
+      <p>7.4 Button Semantics. Selecting "Leave" below means the Member leaves this agreement and returns to their account, with their membership unchanged. Selecting "Stay" below means the Member stays in the cancellation process. SockSync+ is not responsible for Members who did not read clause 7.4.</p>
+      <p>7.5 Any socks in the Member's possession after termination will be sad.</p>
+      ${sec(8, 'Notifications', 'The Member consents to sock notifications every four (4) minutes, including holidays and the Member\'s birthday.')}
+      ${sec(9, 'Feedback', 'All feedback becomes the property of SockSync+ and may be edited for positivity.')}
+      ${sec(10, 'Disputes', 'All disputes will be settled by a sock puppet arbitration panel, whose decision is final and adorable.')}
+      ${sec(11, 'Severability', 'If any part of these Terms is found unenforceable, it will be replaced with a stricter one.')}
+      ${sec(12, 'Entire Agreement', 'These Terms are the entire agreement, except for any other terms, which also apply.')}
+      <p style="text-align:center;font-weight:900;margin-top:18px">End of Terms. Thank you for reading every word.</p>
+    </div>
+    <p class="hint" id="thint" style="font-size:12px;margin-top:8px">Scroll to the bottom to continue.</p>
+    <div class="tbtns"><button class="btn" id="tok" disabled>Stay</button><button class="btn" id="tokay" disabled>Leave</button></div>
+  </div>`;
+  stage.appendChild(ov);
+  const box = ov.querySelector('#tbox');
+  box.addEventListener('scroll', () => {
+    if (box.scrollTop + box.clientHeight >= box.scrollHeight - 6) {
+      ov.querySelector('#tok').disabled = false; ov.querySelector('#tokay').disabled = false;
+      ov.querySelector('#thint').textContent = '';
+    }
+  });
+  ov.querySelector('#tokay').onclick = () => { ov.remove(); state.loops++; go(renderAccount); toast('You left the agreement. Your membership stays! 💚', 3400); };
+  ov.querySelector('#tok').onclick = () => go(renderMaze);
+}
+
+/* ---------- Step 3: sock catapult ---------- */
+function renderCatapult(){
+  setProgress(3, 21);
+  stage.innerHTML = `
+  <section class="card center">
+    <p class="eyebrow">Sock disposal</p>
+    <h1>Throw 3 socks in the bin to continue</h1>
+    <p class="muted" style="max-width:580px;margin:0 auto">Company policy: departing members must personally dispose of their socks. Drag back from the sling and let go. Miss once and every sock climbs back out.</p>
+    <div class="maze-wrap"><canvas id="cp" style="touch-action:none;cursor:grab"></canvas></div>
+    <p class="legend" id="cps"></p>
+  </section>`;
+  const cv = $('#cp'), ctx = cv.getContext('2d');
+  const Wd = Math.min(stage.querySelector('.card').clientWidth - 52, 780);
+  const Ht = Math.round(Math.max(300, Math.min(420, Wd * .52)));
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Wd * dpr; cv.height = Ht * dpr; cv.style.width = Wd + 'px'; cv.style.height = Ht + 'px';
+  const G = .35, GY = Ht - 28, SX = Math.max(70, Wd * .11), SY = GY - 95, MAXP = 95, K = Math.sqrt(Wd * G * 1.05) / MAXP;
+  const bw = Math.max(64, Wd * .095), bh = 64, binTop = GY - bh;
+  const bA = Wd * .55, bB = Wd * .92 - bw / 2;
+  const imgs = ['#FF6B5B', '#6C8CFF', '#FFB830'].map(c => { const i = new Image(); i.src = 'data:image/svg+xml,' + encodeURIComponent(sockSVG(c, 2)); return i; });
+  let made = 0, misses = 0, speed = 1, phase = 0, bx = bA, sock = null, aiming = false, pull = {x: 0, y: 0}, done = false, last = performance.now(), flash = null;
+  const status = $('#cps');
+  const setStatus = () => status.textContent = `Socks in bin: ${made}/3 · Misses: ${misses} · Bin speed: ${speed.toFixed(1)}x`;
+  setStatus();
+  const pos = e => { const b = cv.getBoundingClientRect(); return {x: e.clientX - b.left, y: e.clientY - b.top}; };
+  const aim = p => { let dx = p.x - SX, dy = p.y - SY; const d = Math.hypot(dx, dy); if (d > MAXP) { dx *= MAXP / d; dy *= MAXP / d; } pull = {x: dx, y: dy}; };
+  cv.addEventListener('pointerdown', e => { if (sock || done) return; const p = pos(e); if (Math.hypot(p.x - SX, p.y - SY) < 80) { aiming = true; try { cv.setPointerCapture(e.pointerId); } catch(_){} aim(p); } });
+  cv.addEventListener('pointermove', e => { if (aiming) aim(pos(e)); });
+  const release = () => {
+    if (!aiming) return; aiming = false;
+    if (Math.hypot(pull.x, pull.y) < 12) { pull = {x: 0, y: 0}; return; }
+    sock = {x: SX + pull.x, y: SY + pull.y, vx: -pull.x * K, vy: -pull.y * K, rot: 0, img: imgs[made % 3]};
+    pull = {x: 0, y: 0};
+  };
+  cv.addEventListener('pointerup', release); cv.addEventListener('pointercancel', release);
+  const resolve = ok => {
+    sock = null;
+    if (ok) {
+      made++; speed += .4; flash = {t: 40, txt: 'IN! 🎯', c: '#22A86A'};
+      if (made === 3) { done = true; setStatus(); draw(); toast('All 3 socks binned. You monster. Proceed.', 3200); after(1000, () => go(renderFamily)); return; }
+      toast(`${made}/3 in the bin. The bin is getting faster.`);
+    } else {
+      misses++; made = 0; speed = 1; flash = {t: 40, txt: 'MISS', c: '#FF6B5B'};
+      toast('Missed! Every sock climbed back out. Back to 0/3.', 3200);
+    }
+    setStatus();
+  };
+  const sim = (x, y, vx, vy, n) => { const pts = []; for (let i = 0; i < n; i++) { vy += G; x += vx; y += vy; if (i % 3 === 2) pts.push([x, y]); } return pts; };
+  let raf;
+  const frame = t => {
+    if (done) return;
+    const dt = Math.min(50, t - last); last = t;
+    phase += dt / 1000 * 1.7 * speed;
+    bx = bA + (bB - bA) * (.5 + .5 * Math.sin(phase));
+    if (sock) {
+      for (let i = 0; i < 2 && sock; i++) {
+        const py = sock.y;
+        sock.vy += G / 2; sock.x += sock.vx / 2; sock.y += sock.vy / 2; sock.rot += .07;
+        const L = bx - bw / 2, R = bx + bw / 2;
+        if (py < binTop && sock.y >= binTop && sock.vy > 0 && sock.x > L + 5 && sock.x < R - 5) { resolve(true); break; }
+        if (sock.y > binTop && sock.x > L - 6 && sock.x < R + 6) { resolve(false); break; }
+        if (sock.y >= GY - 6 || sock.x > Wd + 40 || sock.x < -40) { resolve(false); break; }
+      }
+    }
+    if (done) return;
+    draw();
+    raf = requestAnimationFrame(frame);
+  };
+  const draw = () => {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const g = ctx.createLinearGradient(0, 0, 0, Ht); g.addColorStop(0, '#DDF1FF'); g.addColorStop(1, '#FFF7EF');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, Wd, Ht);
+    ctx.fillStyle = '#BFE3B4'; ctx.fillRect(0, GY, Wd, Ht - GY);
+    ctx.fillStyle = '#2B2340'; ctx.fillRect(0, GY, Wd, 3);
+    // bin
+    const L = bx - bw / 2;
+    ctx.fillStyle = '#8A93A6'; ctx.beginPath(); ctx.moveTo(L + 4, binTop); ctx.lineTo(L + bw - 4, binTop); ctx.lineTo(L + bw - 10, GY); ctx.lineTo(L + 10, GY); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#5E667A'; ctx.fillRect(L - 2, binTop - 6, bw + 4, 8);
+    ctx.fillStyle = '#fff'; ctx.font = '900 14px "Instrument Sans", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('BIN', bx, binTop + bh / 2);
+    // sling
+    ctx.strokeStyle = '#7A4E2D'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(SX, GY); ctx.lineTo(SX, SY + 30); ctx.moveTo(SX, SY + 30); ctx.lineTo(SX - 16, SY - 6); ctx.moveTo(SX, SY + 30); ctx.lineTo(SX + 16, SY - 6); ctx.stroke();
+    const rx = SX + pull.x, ry = SY + pull.y;
+    if (!sock && !done) {
+      ctx.strokeStyle = '#3A2A20'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(SX - 16, SY - 6); ctx.lineTo(rx, ry); ctx.lineTo(SX + 16, SY - 6); ctx.stroke();
+      if (aiming && Math.hypot(pull.x, pull.y) > 12) {
+        ctx.fillStyle = 'rgba(43,35,64,.35)';
+        for (const [x, y] of sim(rx, ry, -pull.x * K, -pull.y * K, 18)) { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); }
+      }
+      const im = imgs[made % 3]; if (im.complete && im.naturalWidth) ctx.drawImage(im, rx - 15, ry - 18, 30, 36);
+    }
+    if (sock && sock.img.complete && sock.img.naturalWidth) { ctx.save(); ctx.translate(sock.x, sock.y); ctx.rotate(sock.rot); ctx.drawImage(sock.img, -15, -18, 30, 36); ctx.restore(); }
+    // counter
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(22 + i * 22, 22, 8, 0, Math.PI * 2); ctx.fillStyle = i < made ? '#22A86A' : '#fff'; ctx.fill(); ctx.strokeStyle = '#2B2340'; ctx.lineWidth = 2; ctx.stroke(); }
+    if (flash && flash.t > 0) { flash.t--; ctx.fillStyle = flash.c; ctx.font = '900 34px "Instrument Sans", system-ui, sans-serif'; ctx.fillText(flash.txt, Wd / 2, Ht * .3); }
+  };
+  raf = requestAnimationFrame(frame);
+  cleanups.push(() => { done = true; cancelAnimationFrame(raf); });
+}
+
+
+/* ---------- Step 1: the Retention Maze ---------- */
+function renderMaze(){
+  state.flow = true; setProgress(1, 8);
+  stage.innerHTML = `
+  <section class="card center">
+    <p class="eyebrow">Confirm your choice</p>
+    <h1>Do you want to keep your SockSync+ subscription?</h1>
+    <p class="muted" style="max-width:560px;margin:0 auto">For your safety, your cursor has been replaced with a <b>Secure Cursor™</b> that cannot leave the Retention Maze™. Steer it to <b style="color:#FF6B5B">NO</b> using <b>W A S D</b>. Touching a <b style="color:#22A86A">YES</b> counts as clicking it.</p>
+    <div class="maze-wrap"><canvas id="mz"></canvas></div>
+    <div class="pad"><button class="w" data-k="w">W</button><button class="a" data-k="a">A</button><button class="s" data-k="s">S</button><button class="d" data-k="d">D</button></div>
+    <p class="legend" id="mzs">Steer with W A S D. Arrow keys are a Platinum Toe™ feature.</p>
+  </section>`;
+  const cv = $('#mz'), ctx = cv.getContext('2d');
+  const avail = Math.min(stage.querySelector('.card').clientWidth - 52, 780);
+  const cols = avail < 520 ? 8 : 13, rows = avail < 520 ? 10 : 8;
+  const M = 6, cs = Math.floor((avail - 2 * M) / cols);
+  const Wd = cols * cs + 2 * M, Ht = rows * cs + 2 * M;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Wd * dpr; cv.height = Ht * dpr; cv.style.width = Wd + 'px'; cv.style.height = Ht + 'px';
+  const N = cols * rows, START = 0; let EXIT = N - 1;
+  const r = cs * 0.2, WALL = 4, R = r + WALL / 2;
+  const cx = c => M + (c % cols + .5) * cs, cy = c => M + (Math.floor(c / cols) + .5) * cs;
+
+  let W, segs, dExit, regens = 0, done = false;
+  const gen = () => {
+    const w = Array.from({length: N}, () => ({n:1, e:1, s:1, w:1}));
+    const seen = new Array(N).fill(false), st = [START]; seen[START] = true;
+    while (st.length) {
+      const c = st[st.length - 1], x = c % cols, y = Math.floor(c / cols), nb = [];
+      if (y > 0 && !seen[c - cols]) nb.push(['n', c - cols, 's']);
+      if (x < cols - 1 && !seen[c + 1]) nb.push(['e', c + 1, 'w']);
+      if (y < rows - 1 && !seen[c + cols]) nb.push(['s', c + cols, 'n']);
+      if (x > 0 && !seen[c - 1]) nb.push(['w', c - 1, 'e']);
+      if (!nb.length) { st.pop(); continue; }
+      const [d, n, o] = pick(nb); w[c][d] = 0; w[n][o] = 0; seen[n] = true; st.push(n);
+    }
+    return w;
+  };
+  const nbrs = c => { const o = [], x = c % cols; if (!W[c].n) o.push(c - cols); if (!W[c].s) o.push(c + cols); if (!W[c].e && x < cols - 1) o.push(c + 1); if (!W[c].w && x > 0) o.push(c - 1); return o; };
+  const bfs = s => { const d = new Array(N).fill(1e9); d[s] = 0; const q = [s]; while (q.length) { const c = q.shift(); for (const n of nbrs(c)) if (d[n] > d[c] + 1) { d[n] = d[c] + 1; q.push(n); } } return d; };
+  const build = () => {
+    segs = [];
+    for (let c = 0; c < N; c++) {
+      const x0 = M + (c % cols) * cs, y0 = M + Math.floor(c / cols) * cs, x = c % cols, y = Math.floor(c / cols);
+      if (W[c].n) segs.push([x0, y0, x0 + cs, y0]);
+      if (W[c].w) segs.push([x0, y0, x0, y0 + cs]);
+      if (x === cols - 1 && W[c].e) segs.push([x0 + cs, y0, x0 + cs, y0 + cs]);
+      if (y === rows - 1 && W[c].s) segs.push([x0, y0 + cs, x0 + cs, y0 + cs]);
+    }
+    dExit = bfs(EXIT);
+  };
+  const hits = (px, py) => {
+    for (const [x1, y1, x2, y2] of segs) {
+      const dx = x2 - x1, dy = y2 - y1;
+      const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+      const qx = x1 + t * dx - px, qy = y1 + t * dy - py;
+      if (qx * qx + qy * qy < R * R) return true;
+    }
+    return false;
+  };
+
+  let px = cx(START), py = cy(START);
+  const cellOf = () => Math.min(cols - 1, Math.max(0, Math.floor((px - M) / cs))) + cols * Math.min(rows - 1, Math.max(0, Math.floor((py - M) / cs)));
+  let tokens = [];
+  const placeTokens = () => {
+    const dP = bfs(cellOf());
+    const pool = shuffle([...Array(N).keys()].filter(c => c !== EXIT && c !== START && dP[c] >= 4));
+    tokens = pool.slice(0, cols > 10 ? 4 : 3).map(c => ({c, x: cx(c), y: cy(c)}));
+  };
+  const newMaze = keep => {
+    const pc = cellOf();
+    for (let i = 0; i < 40; i++) { W = gen(); build(); if (!keep || dExit[pc] >= 7) break; }
+    if (keep) { px = cx(pc); py = cy(pc); } else { px = cx(START); py = cy(START); }
+    placeTokens();
+  };
+  newMaze(false);
+
+  const status = $('#mzs');
+  const setStatus = () => status.textContent = `YES buttons roaming: ${tokens.length} · Secure Cursor™: confined`;
+
+  every(1000, () => {
+    if (done) return;
+    const dP = bfs(cellOf());
+    tokens.forEach(t => {
+      const opts = nbrs(t.c).filter(n => n !== EXIT && dP[n] > 1 && !tokens.some(o => o !== t && o.c === n));
+      if (!opts.length) {
+        const far = [...Array(N).keys()].filter(c => c !== EXIT && dP[c] >= 4 && !tokens.some(o => o.c === c));
+        if (far.length) { t.c = pick(far); t.x = cx(t.c); t.y = cy(t.c); }
+        return;
+      }
+      t.c = (dP[t.c] > 2 && Math.random() < .65) ? opts.reduce((a, b) => dP[a] < dP[b] ? a : b) : pick(opts);
+    });
+  });
+  every(4500, () => {
+    if (done || tokens.length < 2) return;
+    const dP = bfs(cellOf());
+    const [a, b] = shuffle(tokens);
+    if (dP[a.c] < 3 || dP[b.c] < 3) return;
+    [a.c, b.c] = [b.c, a.c];
+    a.x = cx(a.c); a.y = cy(a.c); b.x = cx(b.c); b.y = cy(b.c);
+  });
+
+  const held = new Set();
+  const padBtn = k => stage.querySelector(`.pad [data-k="${k}"]`);
+  const press = (k, on) => { on ? held.add(k) : held.delete(k); const b = padBtn(k); if (b) b.classList.toggle('on', on); };
+  let arrowWarn = 0;
+  listen(document, 'keydown', e => {
+    const k = e.key.toLowerCase();
+    if ('wasd'.includes(k) && k.length === 1) { e.preventDefault(); press(k, true); }
+    else if (k.startsWith('arrow')) { e.preventDefault(); if (Date.now() - arrowWarn > 2500) { arrowWarn = Date.now(); toast('Arrow keys are a Platinum Toe™ feature. Please use W A S D.'); } }
+  });
+  listen(document, 'keyup', e => { const k = e.key.toLowerCase(); if (k.length === 1 && 'wasd'.includes(k)) press(k, false); });
+  listen(window, 'blur', () => ['w', 'a', 's', 'd'].forEach(k => press(k, false)));
+  stage.querySelectorAll('.pad button').forEach(b => {
+    const k = b.dataset.k;
+    b.addEventListener('pointerdown', e => { e.preventDefault(); press(k, true); try { b.setPointerCapture(e.pointerId); } catch(_){} });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => b.addEventListener(ev, () => press(k, false)));
+    b.oncontextmenu = e => e.preventDefault();
+  });
+  const circRect = (x, y, w, h) => { const qx = Math.max(x, Math.min(px, x + w)), qy = Math.max(y, Math.min(py, y + h)); return Math.hypot(px - qx, py - qy) < r; };
+
+  let lastCell = START, raf;
+  const frame = () => {
+    if (done) return;
+    const vx = (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0), vy = (held.has('s') ? 1 : 0) - (held.has('w') ? 1 : 0);
+    if (vx || vy) {
+      const d = Math.hypot(vx, vy), dx = vx, dy = vy;
+      {
+        const step = 3.4, n = 3, ux = dx / d * step / n, uy = dy / d * step / n;
+        for (let i = 0; i < n; i++) {
+          if (!hits(px + ux, py + uy)) { px += ux; py += uy; }
+          else if (!hits(px + ux, py)) px += ux;
+          else if (!hits(px, py + uy)) py += uy;
+          else break;
+        }
+      }
+    }
+    const c = cellOf();
+    if (c !== lastCell) {
+      lastCell = c;
+      if (false) {
+        regens++; state.mazeResets++;
+        const dP = bfs(c), maxD = Math.max(...dP);
+        const free = k => k !== START && k !== c && !tokens.some(t => t.c === k);
+        let far = [...Array(N).keys()].filter(k => free(k) && dP[k] >= Math.max(6, Math.floor(maxD * .6)));
+        if (!far.length) far = [...Array(N).keys()].filter(k => free(k) && dP[k] >= 4);
+        EXIT = pick(far); dExit = bfs(EXIT);
+        toast(regens === 1 ? 'NO has moved somewhere more convenient. ✨' : 'NO needed some space. Please go find it. 🙏', 3400);
+        setStatus();
+      }
+    }
+    const ex0 = M + (EXIT % cols) * cs, ey0 = M + Math.floor(EXIT / cols) * cs;
+    if (circRect(ex0 + cs * .12, ey0 + cs * .22, cs * .76, cs * .56)) {
+      done = true; draw(); toast('You chose NO. Correct! (We think.)');
+      after(700, () => go(renderSure)); return;
+    }
+    for (const t of tokens) {
+      t.x += (cx(t.c) - t.x) * .18; t.y += (cy(t.c) - t.y) * .18;
+      const settled = Math.hypot(t.x - cx(t.c), t.y - cy(t.c)) < cs * .3;
+      if (settled && circRect(t.x - cs * .34, t.y - cs * .2, cs * .68, cs * .4)) {
+        done = true; toast("You clicked YES! Wonderful, you're staying. 💚", 3400);
+        after(900, () => backToStart("You clicked YES! Wonderful, you're staying. 💚")); return;
+      }
+    }
+    draw();
+    raf = requestAnimationFrame(frame);
+  };
+
+  const rr = (x, y, w, h, rad) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, rad) : ctx.rect(x, y, w, h); };
+  const draw = () => {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, Wd, Ht);
+    ctx.fillStyle = '#FFF7EF'; rr(0, 0, Wd, Ht, 14); ctx.fill();
+    const ex = M + (EXIT % cols) * cs, ey = M + Math.floor(EXIT / cols) * cs;
+    ctx.fillStyle = '#FF6B5B'; rr(ex + cs * .12, ey + cs * .22, cs * .76, cs * .56, 8); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(cs * .26)}px "Instrument Sans", system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('NO', ex + cs / 2, ey + cs / 2 + 1);
+    ctx.fillStyle = '#B9AEC4'; ctx.font = `800 ${Math.round(cs * .16)}px "Instrument Sans", system-ui, sans-serif`;
+    ctx.fillText('START', cx(START), cy(START) - cs * .34);
+    ctx.strokeStyle = '#2B2340'; ctx.lineWidth = WALL; ctx.lineCap = 'round';
+    ctx.beginPath(); for (const [x1, y1, x2, y2] of segs) { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); } ctx.stroke();
+    for (const t of tokens) {
+      ctx.fillStyle = '#22A86A'; rr(t.x - cs * .34, t.y - cs * .2, cs * .68, cs * .4, 8); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(cs * .2)}px "Instrument Sans", system-ui, sans-serif`;
+      ctx.fillText('YES', t.x, t.y + 1);
+    }
+    ctx.fillStyle = '#FF6B5B'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    const k = r / 9;
+    ctx.fillStyle = '#fff'; ctx.beginPath();
+    ctx.moveTo(px - 3 * k, py - 6 * k); ctx.lineTo(px - 3 * k, py + 5 * k); ctx.lineTo(px, py + 2 * k); ctx.lineTo(px + 5 * k, py + 2.5 * k); ctx.closePath(); ctx.fill();
+  };
+  raf = requestAnimationFrame(frame);
+  cleanups.push(() => { done = true; cancelAnimationFrame(raf); });
+}
+
+/* ---------- Step 1: trick question ---------- */
+function renderSure(){
+  setProgress(2, 12);
+  stage.innerHTML = `
+  <section class="card center narrow">
+    <p class="eyebrow">Hold on</p>
+    <h1>Are you sure you don't want to not cancel?</h1>
+    <p class="muted">Cancelling means losing 47 benefits you have never used. Your sock drawer will be emotionally unprepared.</p>
+    <div class="swapper" id="sw"><button class="btn big" id="yes">Yes</button><button class="btn big" id="no">No</button></div>
+    <label class="check"><input type="checkbox" id="plat" checked><span>Leave this checked unless you don't want to avoid not missing out on Platinum Toe™ ($9.99/mo, cancel anytime*)</span></label>
+    <p class="fine">Offer expires in <span id="t1"></span></p>
+  </section>`;
+  const sw = $('#sw'), yes = $('#yes'), no = $('#no');
+  const paint = () => { const g = Math.random() < .5; yes.className = 'btn big ' + (g ? 'primary' : 'ghost'); no.className = 'btn big ' + (g ? 'ghost' : 'primary'); };
+  paint();
+  every(1500, () => { sw.classList.toggle('flip'); paint(); });
+  countdown($('#t1'), 299);
+  yes.onclick = () => {
+    if ($('#plat').checked) { toast("You can't cancel with an upgrade pending in your cart. Un-add Platinum Toe™ first.", 3600); return; }
+    go(renderFamily);
+  };
+  no.onclick = () => backToStart("Wonderful! You've chosen to stay. 💚");
+}
+
+/* ---------- Step 2: guilt trip ---------- */
+const family = [
+  {n:'Gerald', c:'#FF6B5B', d:'412 days by your side'},
+  {n:'Agnes', c:'#6C8CFF', d:'Knitted your initials into her heel'},
+  {n:"Lil' Tim", c:'#FFB830', d:'Still afraid of the dryer'},
+  {n:'Sir Woolington', c:'#8A6CFA', d:'Has never once gone missing'},
+  {n:'Dot', c:'#2BB673', d:'Thinks you hung the moon'},
+  {n:'The Twins', c:'#FF8FB1', d:'Refuse to be separated. Like you and us.'}
+];
+function renderFamily(){
+  setProgress(3, 34);
+  stage.innerHTML = `
+  <section class="card center narrow">
+    <p class="eyebrow">Before you go</p>
+    <h1>Say goodbye to the family</h1>
+    <p id="guiltline"></p>
+    <div class="family">${family.map((s, i) => `<div class="sock"><div class="face" id="s${i}"></div><b>${s.n}</b><span>${s.d}</span></div>`).join('')}</div>
+    <div class="familybtns">
+      <button class="btn primary big" id="stay">Stay with my family 💚</button>
+      <button class="link" id="leave">Abandon Gerald (and the others)</button>
+    </div>
+  </section>`;
+  const lines = ["They're so happy you're here.", "Agnes senses something is wrong.", "Lil' Tim is asking where you're going.", "Everyone is crying. Hope you're happy."];
+  const stay = $('#stay'), leave = $('#leave');
+  let mood = -1;
+  const setMood = m => {
+    if (m === mood) return; mood = m;
+    if (m === 3) state.guilt += 5;
+    family.forEach((s, i) => $('#s' + i).innerHTML = sockSVG(s.c, m));
+    $('#guiltline').textContent = lines[m];
+  };
+  setMood(0);
+  listen(document, 'pointermove', e => {
+    const r = leave.getBoundingClientRect();
+    const d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2));
+    setMood(d < 90 ? 3 : d < 200 ? 2 : d < 340 ? 1 : 0);
+  });
+  let h = 0;
+  listen(leave, 'pointerenter', () => {
+    h++; state.guilt += 10;
+    stay.style.transform = `scale(${Math.min(1 + h * .12, 1.7)})`;
+    leave.style.transform = `scale(${Math.max(1 - h * .07, .7)})`;
+  });
+  stay.onclick = () => backToStart('The family thanks you. 🧦💚');
+  leave.onclick = () => { setMood(3); go(renderSurvey); };
+}
+
+/* ---------- Step 3: survey with positivity filter ---------- */
+const reasons = [
+  ["It's too expensive", "That's why we're raising the price. People value what they pay for."],
+  ["I have enough socks", "Nobody has enough socks. That's just science."],
+  ["I found a cheaper sock service", "We've reported them to the Sock Authority."],
+  ["My feet are fine without you", "Your feet asked us to tell you that isn't true."],
+  ["Other (please specify in 400 words)", "We'll read every word. Probably."]
+];
+function renderSurvey(){
+  setProgress(4, 31);
+  stage.innerHTML = `
+  <section class="card narrow">
+    <p class="eyebrow">Quick survey (required)</p>
+    <h1>Help us understand why you hate us</h1>
+    <div>${reasons.map((r, i) => `<label class="reason"><input type="radio" name="r" value="${i}"><span>${r[0]}</span></label><div class="rebut" id="rb${i}">${r[1]}</div>`).join('')}</div>
+    <label class="lbl" for="fb">Please explain in at least 40 characters</label>
+    <div class="filter" id="flt">🌈 Positivity Filter™ is on, to keep all feedback kind.</div>
+    <textarea id="fb" rows="4" placeholder="Tell us how much you love us..."></textarea>
+    <div class="row"><span id="cnt" class="muted">0/40</span><button class="link" id="skip">Skip survey</button></div>
+    <button class="btn primary big" id="sub" disabled>Submit feedback</button>
+  </section>`;
+  const fb = $('#fb'), sub = $('#sub'), flt = $('#flt');
+  const bad = /\b(cancel\w*|leav\w*|left|quit\w*|stop\w*|hate\w*|bad|worse|worst|expensive|pricey|cold|bye|goodbye|unsubscrib\w*|no|not|never|terrible|awful|annoying|boring|go|going|gone|done|sucks?|scam|rip-?off|stupid|dumb)\b/gi;
+  const nice = ['love', 'adore', 'cherish', 'warm', 'cozy', 'hug', 'stay'];
+  const check = () => {
+    const chosen = stage.querySelector('input[name=r]:checked');
+    $('#cnt').textContent = `${fb.value.length}/40`;
+    sub.disabled = !(chosen && fb.value.length >= 40);
+  };
+  stage.querySelectorAll('input[name=r]').forEach(r => r.onchange = () => {
+    stage.querySelectorAll('.rebut').forEach(x => x.classList.remove('show'));
+    $('#rb' + r.value).classList.add('show'); check();
+  });
+  let flashT;
+  fb.oninput = () => {
+    const v = fb.value.replace(bad, () => pick(nice));
+    if (v !== fb.value) {
+      fb.value = v;
+      flt.classList.add('flash'); flt.textContent = '🌈 Positivity Filter™ made your feedback nicer. You\'re welcome.';
+      clearTimeout(flashT); flashT = setTimeout(() => { flt.classList.remove('flash'); flt.textContent = '🌈 Positivity Filter™ is on, to keep all feedback kind.'; }, 1800);
+    }
+    check();
+  };
+  $('#skip').onclick = () => toast('Skipping requires completing a short survey about skipping surveys.');
+  sub.onclick = () => go(renderOffer);
+}
+
+/* ---------- Step 4: retention offer ---------- */
+function renderOffer(){
+  setProgress(5, 58);
+  stage.innerHTML = `
+  <div class="overlay"><div class="modal">
+    <button class="x" id="x" aria-label="close">✕</button>
+    <div class="burst">WAIT!!!</div>
+    <h1 style="margin-top:14px">An offer this good is basically illegal</h1>
+    <div class="offer">90% OFF<span>for 12 whole months</span></div>
+    <p class="muted" style="margin:6px 0 0;font-weight:700">Just $1.49/mo*</p>
+    <p class="timer">Offer expires in <b id="t2"></b></p>
+    <button class="btn primary huge" id="claim">CLAIM MY DISCOUNT 🎉</button>
+    <button class="hold" id="hold"><span class="fill" id="fill"></span><span class="lbl2" id="hlbl">Hold to say: No thanks, I enjoy cold, lonely feet</span></button>
+    <p class="fine">*Per sock, per foot, per day. Billed hourly. Discount applies to the discount only.</p>
+  </div></div>`;
+  countdown($('#t2'), 10, () => { state.offerResets++; toast('Good news! We extended the offer just for you. 🎉'); });
+
+  const x = $('#x');
+  const spots = [{top:'10px', right:'12px'}, {top:'10px', left:'12px'}, {bottom:'10px', right:'12px'}, {bottom:'10px', left:'12px'}];
+  const moveX = () => { ['top', 'right', 'bottom', 'left'].forEach(k => x.style[k] = ''); Object.assign(x.style, pick(spots)); };
+  moveX(); every(1100, moveX);
+  x.onclick = () => toast('That ✕ is purely decorative. 🎀');
+
+  $('#claim').onclick = () => backToStart("Discount applied! You're staying. 💚 Per-sock billing starts now.");
+
+  const hold = $('#hold'), fill = $('#fill'), hl = $('#hlbl');
+  let p = 0, holding = false, last = performance.now(), raf;
+  const labels = ['Hold to say: No thanks, I enjoy cold, lonely feet', 'Are you sure?', 'Gerald is watching…', 'Last chance to be warm…'];
+  const tick = t => {
+    const dt = t - last; last = t;
+    p += holding ? dt / 4000 : -dt / 1400;
+    p = Math.max(0, Math.min(1, p));
+    fill.style.width = (p * 100) + '%';
+    hl.textContent = labels[Math.min(3, Math.floor(p * 4))];
+    if (p >= 1) { go(renderWindow); return; }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  cleanups.push(() => cancelAnimationFrame(raf));
+  hold.addEventListener('pointerdown', e => { holding = true; try { hold.setPointerCapture(e.pointerId); } catch(_){} });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => hold.addEventListener(ev, () => holding = false));
+  hold.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); holding = true; } });
+  hold.addEventListener('keyup', () => holding = false);
+  hold.oncontextmenu = e => e.preventDefault();
+}
+
+/* ---------- Step 5: secure keyboard ---------- */
+function renderKeyboard(){
+  setProgress(6, 47);
+  stage.innerHTML = `
+  <section class="card center narrow">
+    <p class="eyebrow">Identity verification</p>
+    <h1>Type <code>COLD FEET</code> to prove you're a human who wants cold feet</h1>
+    <p class="muted">For your security, physical keyboards are disabled. Please use our Secure Keyboard™, which reshuffles after every key to stop hackers (and you).</p>
+    <div class="typed" id="typed"></div>
+    <div class="hint" id="hint"></div>
+    <div class="kb" id="kb"></div>
+  </section>`;
+  const target = 'COLD FEET';
+  const keys = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'SPACE', '⌫'];
+  const kb = $('#kb'), typedEl = $('#typed'), hint = $('#hint');
+  let typed = '', locked = false;
+  const draw = () => {
+    kb.innerHTML = shuffle(keys).map(k => `<button class="key${k === 'SPACE' ? ' wide' : ''}" data-k="${k}">${k === 'SPACE' ? 'space' : k}</button>`).join('');
+    typedEl.innerHTML = typed.split('').map(c => `<i>${c === ' ' ? '&nbsp;' : c}</i>`).join('') + '<span class="caret"></span>';
+  };
+  draw();
+  kb.onclick = e => {
+    const b = e.target.closest('[data-k]'); if (!b || locked) return;
+    const k = b.dataset.k;
+    if (k === '⌫') typed = typed.slice(0, -1);
+    else if (k === 'SPACE') typed += ' ';
+    else typed += k;
+    typed = typed.slice(0, 12);
+    hint.textContent = '';
+    if (!state.autocorrected && typed === 'COLD') {
+      state.autocorrected = true; typed = 'WARM';
+      toast("Autocorrect changed COLD to WARM. You're welcome. ☀️", 3400);
+    }
+    draw();
+    if (typed === target) {
+      locked = true; hint.textContent = 'Verified. Begrudgingly.';
+      after(900, () => go(renderWindow));
+    } else if (typed.length >= target.length) {
+      hint.textContent = 'Incorrect. Have you considered warm feet instead?';
+      typedEl.classList.remove('shake'); void typedEl.offsetWidth; typedEl.classList.add('shake');
+    }
+  };
+  let lastWarn = 0;
+  listen(document, 'keydown', e => {
+    if (e.target.closest && e.target.closest('.key')) { if (e.key === 'Enter' || e.key === ' ') return; }
+    if (e.key.length === 1 || e.key === 'Backspace') {
+      e.preventDefault();
+      if (Date.now() - lastWarn > 2500) { lastWarn = Date.now(); toast('Physical keyboards are disabled for your security. 🔒'); }
+    }
+  });
+}
+
+/* ---------- Step 6: the department is open 9 seconds a minute ---------- */
+function renderWindow(){
+  setProgress(6, 47);
+  stage.innerHTML = `
+  <section class="card center narrow">
+    <p class="eyebrow">Final step</p>
+    <h1>Connect to the Cancellation Department</h1>
+    <p class="muted">Our agents are available at :07, :27 and :47 seconds past every minute, for 3 seconds each. Your call is important to us.</p>
+    <div class="clock" id="clk"></div>
+    <p class="caller">You are caller <b id="caller">#4,812</b> in line · ♪ Now playing: "Don't Go (Sock Remix)" ♪</p>
+    <button class="btn big" id="confirm" disabled></button>
+  </section>`;
+  const opens = [7, 27, 47];
+  const btn = $('#confirm');
+  let busy = false, caller = 4812;
+  const upd = () => {
+    const d = new Date();
+    $('#clk').textContent = [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
+    if (busy) return;
+    const s = d.getSeconds();
+    const open = opens.some(o => s >= o && s < o + 3);
+    if (open) { btn.disabled = false; btn.className = 'btn big primary'; btn.textContent = 'Connect now! The department is open'; }
+    else {
+      const n = Math.min(...opens.map(o => (o - s + 60) % 60).filter(v => v > 0));
+      btn.disabled = true; btn.className = 'btn big'; btn.textContent = `Department closed · opens in ${n}s`;
+    }
+  };
+  upd(); every(200, upd);
+  every(1000, () => { caller += Math.floor(rand(1, 4)); $('#caller').textContent = '#' + caller.toLocaleString('en-US'); });
+  btn.onclick = () => {
+    if (btn.disabled) return;
+    if (!state.brokeOnce) {
+      state.brokeOnce = true; busy = true; btn.disabled = true; btn.className = 'btn big'; btn.textContent = 'Connecting… ♪';
+      after(2200, () => { busy = false; toast('Sorry! Your agent just left for lunch. Please try the next window.', 3800); });
+    } else go(renderProcessing);
+  };
+}
+
+/* ---------- Step 7 of 6: processing ---------- */
+function renderProcessing(){
+  setProgress(7, 99, 'Cancellation progress · Step 7 of 6');
+  stage.innerHTML = `
+  <section class="card center narrow">
+    <h1>Processing your cancellation</h1>
+    <div class="pbar2"><i id="p2"></i></div>
+    <p id="p2pct" class="muted" style="font-weight:800">0%</p>
+    <ul class="log" id="log"></ul>
+  </section>`;
+  const msgs = ['Notifying your socks…', 'Shredding your sock playlists…', "Packing Gerald's tiny suitcase…", 'Writing a sad poem about you…', 'Removing you from the sock group chat…', 'Cancelling. For real this time.'];
+  let i = 0;
+  every(900, () => {
+    if (i < msgs.length) {
+      const li = document.createElement('li'); li.textContent = msgs[i]; $('#log').appendChild(li); i++;
+      const pct = Math.round(i / msgs.length * 99);
+      $('#p2').style.width = pct + '%'; $('#p2pct').textContent = pct + '%';
+    } else if (i === msgs.length) { i++; $('#p2pct').textContent = '99% · Almost there (this is the slow 1%)'; }
+    else if (i < msgs.length + 4) i++;
+    else go(renderDone);
+  });
+}
+
+/* ---------- Done ---------- */
+function renderDone(){
+  state.flow = false; bot.hidden = true;
+  setProgress('', 100, 'Cancellation complete. Really.');
+  after(1800, hideProgress);
+  const secs = Math.round((Date.now() - state.start) / 1000);
+  const t = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  stage.innerHTML = `
+  <section class="card center narrow">
+    <div class="donecheck">✓</div>
+    <h1>You're cancelled.</h1>
+    <p class="muted" style="font-weight:700">No further charges. Really. Gerald will be fine. Probably.</p>
+    <div class="stats">
+      <div><b>${t}</b><span>time to escape</span></div>
+      <div><b>${state.clicks}</b><span>clicks spent</span></div>
+      <div><b>${state.loops}</b><span>times we got you back</span></div>
+      <div><b>${state.guilt}</b><span>units of guilt</span></div>
+    </div>
+    <button class="btn primary huge" id="resub">Resubscribe (we miss you already)</button>
+    <button class="link" id="again" style="margin-top:10px">Play again</button>
+  </section>
+  <section class="card narrow reveal">
+    <h2>Dark patterns you just survived</h2>
+    <ol>
+      <li><b>Pre-filled cart.</b> Your cart started full, cancelling was blocked until you emptied it, and emptying it added Empty Cart Protection™.</li>
+      <li><b>Pop-ups.</b> Upsells with a giant "add to cart" button and a close button the size of a crumb.</li>
+      <li><b>Buried terms.</b> Clause 7.4 said "Leave" keeps your membership and "Stay" continues cancelling.</li>
+      <li><b>The Retention Maze™.</b> Your cursor is trapped in a maze, steered only by W A S D, while YES buttons roam into your path.</li>
+      <li><b>Decoy button.</b> The big red "Cancel" button only cancels your thoughts of leaving.</li>
+      <li><b>Trick question.</b> "Are you sure you don't want to not cancel?" with Yes and No buttons that swap places and colours.</li>
+      <li><b>Sneak into basket.</b> Platinum Toe™ was pre-checked behind a quadruple negative, and it blocked cancellation.</li>
+      <li><b>Guilt trip.</b> Six named socks whose faces get sadder the closer you get to "Abandon".</li>
+      <li><b>Silenced feedback.</b> The Positivity Filter™ rewrote every complaint into a compliment.</li>
+      <li><b>Fake urgency.</b> A 10-second timer that resets itself forever. It reset ${state.offerResets} time${state.offerResets === 1 ? '' : 's'} on you.</li>
+      <li><b>Confirmshaming.</b> "No thanks, I enjoy cold, lonely feet", and you had to hold it for four seconds.</li>
+      <li><b>Roach motel.</b> A department open 9 seconds a minute, whose agent then left for lunch.</li>
+      <li><b>Fake progress.</b> Step 7 of 6, with a progress bar that went backwards.</li>
+      <li><b>Nagging.</b> Sockbot.</li>
+    </ol>
+    <p class="muted" style="margin-bottom:0">Every trick here is a parody of patterns real subscription services use, and regulators fine companies for them. Now you know what they look like. Please never ship one.</p>
+  </section>`;
+  $('#resub').onclick = () => toast("Resubscribed! 🎉 Just kidding. SockSync+ isn't real, and neither were the charges.", 3800);
+  $('#again').onclick = () => { state = fresh(); go(renderAccount); };
+}
+
+$('#cartbtn').onclick = () => openCart();
+go(renderAccount);
+</script>
+</body>
+</html>

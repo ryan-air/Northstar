@@ -1,0 +1,11 @@
+# Dependencies for Algafix/OSNMA (OSNMAlib) — install into .venv
+# PYTHONPATH must include ../../vendor/OSNMA
+bitstring>=4.0,<5
+ecdsa>=0.18.0
+wrapt>=1.16.0
+six>=1.16.0
+pandas>=1.5.2
+pycryptodome>=3.19.0
+protobuf>=4.25.1
+reedsolo~=1.7.0
+ntplib~=0.4.0

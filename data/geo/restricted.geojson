@@ -1,0 +1,17 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "restricted_demo_inland_fi",
+      "properties": {
+        "name": "Demo inland impossible zone (Finland interior)",
+        "kind": "restricted"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[24.85, 60.25], [25.05, 60.25], [25.05, 60.40], [24.85, 60.40], [24.85, 60.25]]]
+      }
+    }
+  ]
+}
