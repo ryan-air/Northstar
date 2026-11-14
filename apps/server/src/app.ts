@@ -844,6 +844,11 @@ export class NorthstarApp {
       return { ...picked, policy: 'simulated_only' };
     }
     this.clearSimOverrides();
+    // 'normal' after an attack: clear only the simulated ships so the target recovers at
+    // once (no clock jump, live and recorded ships untouched — unlike 'reset').
+    if (id === 'normal' && this.sim.scenario.id !== 'normal') {
+      for (const s of this.simulatedShipIds()) this.pipeline.removeEntity(s);
+    }
     const target =
       entityId ??
       this.lab.signedEntityId ??

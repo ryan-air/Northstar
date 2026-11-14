@@ -9,7 +9,7 @@ interface Scenario {
 
 // Navigation / physical-consistency attacks.
 const NAV_SCENARIOS: Scenario[] = [
-  { id: 'normal', label: 'Normal', hint: 'Healthy track, high trust' },
+  { id: 'normal', label: 'Normal', hint: 'Stop any injected attack (simulated ships recover; nothing else changes)' },
   { id: 'sudden_spoof', label: 'Sudden spoof', hint: 'Jump inland' },
   { id: 'gradual_drift', label: 'Gradual drift', hint: 'Slow divergence' },
   { id: 'ais_disagreement', label: 'AIS conflict', hint: 'Independent feed conflict' },
@@ -63,14 +63,6 @@ export function BottomBar({ onCyberOpen }: Props) {
       <div className="bottom-divider" />
       {renderGroup('Navigation', NAV_SCENARIOS)}
       {renderGroup('Security', SEC_SCENARIOS)}
-      <button
-        type="button"
-        className="scenario-btn reset"
-        title="Clear state & restart"
-        onClick={() => void runScenario('reset')}
-      >
-        Reset
-      </button>
       {last?.target && (
         <div
           className="scenario-notice"
