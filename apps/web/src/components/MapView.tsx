@@ -43,7 +43,7 @@ function offlineStyle(): StyleSpecification {
       {
         id: 'bg',
         type: 'background',
-        paint: { 'background-color': '#0c1c2b' },
+        paint: { 'background-color': '#12355a' },
       },
     ],
   };
@@ -157,6 +157,15 @@ export function MapView() {
       mapRef.current = map;
 
       map.on('load', async () => {
+        // Ocean navy water (the online CARTO dark basemap paints near-black water).
+        try {
+          for (const l of map.getStyle().layers ?? []) {
+            if (l.type === 'background') map.setPaintProperty(l.id, 'background-color', '#0d2742');
+            else if (l.type === 'fill' && /water|ocean|sea/i.test(l.id)) map.setPaintProperty(l.id, 'fill-color', '#12355a');
+          }
+        } catch {
+          /* style without those layers */
+        }
         if (cancelled) return;
         const ensureSource = (id: string, data: GeoJSON.GeoJSON | GeoJSON.FeatureCollection) => {
           if (map.getSource(id)) {

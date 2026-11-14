@@ -20,7 +20,7 @@
   --high: #39b980;
   --neon-green: #39b980;
   --instrument: #8fb8d6;
-  --map-water: #0c1c2b;
+  --map-water: #12355a;
   --font-sans: 'IBM Plex Sans', 'Inter', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
   --header-h: 52px;
@@ -1170,3 +1170,19 @@ body { font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased; 
   background: radial-gradient(circle at 50% 45%, rgba(54, 191, 192, 0.06), transparent 65%);
 }
 .evidence-row:hover { background: var(--bg-panel-2); }
+
+
+/* Bottom bar: single row, even padding, scrolls horizontally on narrow screens. */
+.bottom-bar {
+  padding: 0 18px;
+  gap: 16px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.bottom-bar > * { flex-shrink: 0; }
+.scenario-group { gap: 10px; flex-shrink: 0; }
+.scenario-buttons { flex-wrap: nowrap; gap: 6px; }
+.scenario-btn { padding: 6px 11px; white-space: nowrap; line-height: 1.2; }
+.cyber-trigger { padding: 7px 12px; white-space: nowrap; }
+.bottom-divider { flex-shrink: 0; }
