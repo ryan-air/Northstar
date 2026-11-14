@@ -1,13 +1,24 @@
 import { useStore } from '../lib/store';
 import type { ScenarioId } from '../lib/types';
 
-const SCENARIOS: Array<{ id: ScenarioId; label: string; hint: string }> = [
+interface Scenario {
+  id: ScenarioId;
+  label: string;
+  hint: string;
+}
+
+// Navigation / physical-consistency attacks.
+const NAV_SCENARIOS: Scenario[] = [
   { id: 'normal', label: 'Normal', hint: 'Healthy track, high trust' },
   { id: 'sudden_spoof', label: 'Sudden spoof', hint: 'Jump inland' },
   { id: 'gradual_drift', label: 'Gradual drift', hint: 'Slow divergence' },
   { id: 'ais_disagreement', label: 'AIS conflict', hint: 'Independent feed conflict' },
   { id: 'gnss_jamming', label: 'GNSS jam', hint: 'Simulated signal degradation' },
   { id: 'imu_disagreement', label: 'IMU disagree', hint: 'Simulated inertial residual' },
+];
+
+// Cryptographic / RF security tests.
+const SEC_SCENARIOS: Scenario[] = [
   { id: 'signed_tamper', label: 'Sig tamper', hint: 'Alter field after sign' },
   { id: 'signed_replay', label: 'Sig replay', hint: 'Old sequence resent' },
   { id: 'stale_clock_skew', label: 'Clock skew', hint: 'Provider B timestamps aged' },
@@ -22,19 +33,17 @@ interface Props {
 
 export function BottomBar({ onCyberOpen }: Props) {
   const runScenario = useStore((s) => s.runScenario);
-  const snapshot = useStore((s) => s.snapshot);
+  const activeScenario = useStore((s) => s.snapshot?.active_scenario);
 
-  return (
-    <div className="bottom-bar">
-      <button type="button" className="cyber-trigger" onClick={onCyberOpen}>
-        Cyber ↑
-      </button>
+  const renderGroup = (label: string, scenarios: Scenario[]) => (
+    <div className="scenario-group">
+      <span className="scenario-group-label">{label}</span>
       <div className="scenario-buttons">
-        {SCENARIOS.map((s) => (
+        {scenarios.map((s) => (
           <button
             key={s.id}
             type="button"
-            className={`scenario-btn${snapshot?.active_scenario === s.id ? ' active' : ''}`}
+            className={`scenario-btn${activeScenario === s.id ? ' active' : ''}`}
             title={s.hint}
             onClick={() => void runScenario(s.id)}
           >
@@ -42,6 +51,17 @@ export function BottomBar({ onCyberOpen }: Props) {
           </button>
         ))}
       </div>
+    </div>
+  );
+
+  return (
+    <div className="bottom-bar">
+      <button type="button" className="cyber-trigger" onClick={onCyberOpen}>
+        🛡 Cyber Console ↑
+      </button>
+      <div className="bottom-divider" />
+      {renderGroup('Navigation', NAV_SCENARIOS)}
+      {renderGroup('Security', SEC_SCENARIOS)}
       <button
         type="button"
         className="scenario-btn reset"

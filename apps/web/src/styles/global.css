@@ -79,6 +79,9 @@ button {
 .panel.right {
   border-right: none;
   border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .panel-title {
@@ -353,6 +356,7 @@ button {
 .tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .tabs button {
   flex: 1;
@@ -369,6 +373,15 @@ button {
 
 .tab-body {
   padding: 10px 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.tab-body.events-tab {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .kv {
@@ -447,7 +460,6 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  flex: 1;
 }
 
 .scenario-btn {
@@ -469,7 +481,35 @@ button {
   border-color: var(--warn);
   color: var(--warn);
   flex-shrink: 0;
-  margin-left: 4px;
+  margin-left: auto;
+}
+
+.bottom-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+.scenario-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scenario-group-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.scenario-group + .scenario-group {
+  border-left: 1px solid var(--border-soft);
+  padding-left: 8px;
+  margin-left: 2px;
 }
 
 .view-toggle {
@@ -695,6 +735,7 @@ button {
   flex-direction: column;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .event-row {
@@ -705,8 +746,23 @@ button {
 .event-row:hover {
   background: var(--bg-panel-2);
 }
-.event-row.expanded {
+.event-row.selected {
   background: var(--bg-elevated);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Pinned event detail — stays fixed above the scrolling feed */
+.event-detail-pinned {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 8px 10px;
+  flex-shrink: 0;
+}
+.event-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
 }
 
 .event-row-main {
@@ -779,6 +835,14 @@ button {
   font-size: 10px;
   color: var(--text-dim);
   font-family: var(--font-mono);
+}
+
+/* Sources tab concise descriptor line */
+.source-detail {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.35;
+  margin-top: 4px;
 }
 
 /* Left panel vessel list */
