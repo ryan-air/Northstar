@@ -47,6 +47,9 @@ playwright-report/
 .vscode/
 
 data/fixtures/audit.jsonl.broken-*
+data/fixtures/audit.jsonl.fail-closed
+data/fixtures/audit.checkpoint.json
+data/fixtures/revocation.jsonl.head.json
 
 # RF lab captures (multi-GB) — keep layout/results JSON only
 *.sink

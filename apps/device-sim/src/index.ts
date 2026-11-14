@@ -16,11 +16,12 @@ import { mmsiFromIdentity, OnboardTrack } from './onboardTrack.js';
 
 const env = (a: string, b: string) => process.env[a] ?? process.env[b];
 const DEVICE_ID = env('NORTHSTAR_DEVICE_ID', 'FLAGSHIP_DEVICE_ID') ?? 'DEV-VESSEL-001';
-// If the operator pins an entity we honour it; otherwise device-sim follows
-// whatever vessel the server designated as the Hist Lab signed target (which
-// is data-driven and can change as the replay cache grows).
-const ENTITY_ID_EXPLICIT = env('NORTHSTAR_ENTITY_ID', 'FLAGSHIP_ENTITY_ID');
-let ENTITY_ID = ENTITY_ID_EXPLICIT ?? 'LAB-230685000';
+// If the operator pins an entity via env we honour it; otherwise device-sim
+// follows whatever vessel the server designated as the Hist Lab signed target
+// (data-driven, can change as the replay cache grows).
+/** May be overridden after first snapshot if NORTHSTAR_ENTITY_ID is unset. */
+let ENTITY_ID = env('NORTHSTAR_ENTITY_ID', 'FLAGSHIP_ENTITY_ID') ?? 'LAB-230685000';
+const ENTITY_ID_PINNED = Boolean(env('NORTHSTAR_ENTITY_ID', 'FLAGSHIP_ENTITY_ID'));
 let keyId = `${DEVICE_ID}-key-1`;
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const REPLAY_PATH =
@@ -149,27 +150,6 @@ async function refreshDeviceMeta(): Promise<void> {
   }
 }
 
-async function resolveSignedEntity(): Promise<void> {
-  // Align to the server's current Hist Lab signed vessel so we never enroll
-  // under a stale entity (which the server would reject with 409 after it
-  // rebinds the device on startup). An explicit NORTHSTAR_ENTITY_ID wins.
-  if (ENTITY_ID_EXPLICIT) return;
-  try {
-    const res = await apiFetch(`${API}/api/snapshot`);
-    if (!res.ok) return;
-    const snap = (await res.json()) as {
-      lab?: { signed_entity_id?: string | null; fullstack_entity_id?: string | null };
-    };
-    const signed = snap.lab?.signed_entity_id ?? snap.lab?.fullstack_entity_id;
-    if (signed && signed !== ENTITY_ID) {
-      ENTITY_ID = signed;
-      MMSI = mmsiFromIdentity(ENTITY_ID, process.env.NORTHSTAR_MMSI);
-    }
-  } catch {
-    /* fall back to default/env ENTITY_ID */
-  }
-}
-
 async function enrolDevice(): Promise<void> {
   if (!signer) throw new Error('signer unavailable for enrollment');
   const res = await apiFetch(`${API}/api/devices/enrol`, {
@@ -182,7 +162,13 @@ async function enrolDevice(): Promise<void> {
     }),
   });
   if (!res.ok) {
-    throw new Error(`public-key enrollment failed (${res.status})`);
+    const errBody = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      detail?: string;
+    };
+    throw new Error(
+      `public-key enrollment failed (${res.status}): ${errBody.detail ?? errBody.error ?? 'unknown'}`,
+    );
   }
   const response = (await res.json()) as {
     enrollment?: { key_id?: string };
@@ -217,17 +203,23 @@ async function fetchChallenge(): Promise<string | null> {
 async function fetchSnapshot(): Promise<{
   active_scenario: string;
   osnma_status?: string;
+  signed_entity_id?: string | null;
 } | null> {
   try {
     const res = await apiFetch(`${API}/api/snapshot`);
     if (!res.ok) return null;
     const s = (await res.json()) as {
       active_scenario: string;
-      lab?: { osnma_protocol_status?: string };
+      lab?: {
+        osnma_protocol_status?: string;
+        signed_entity_id?: string | null;
+        fullstack_entity_id?: string | null;
+      };
     };
     return {
       active_scenario: s.active_scenario,
       osnma_status: s.lab?.osnma_protocol_status,
+      signed_entity_id: s.lab?.fullstack_entity_id ?? s.lab?.signed_entity_id ?? null,
     };
   } catch {
     return null;
@@ -318,7 +310,17 @@ async function tick(): Promise<void> {
 
 async function start(): Promise<void> {
   await refreshSigner();
-  await resolveSignedEntity();
+  if (!ENTITY_ID_PINNED) {
+    for (let i = 0; i < 30; i++) {
+      const snap = await fetchSnapshot();
+      if (snap?.signed_entity_id) {
+        ENTITY_ID = snap.signed_entity_id;
+        MMSI = mmsiFromIdentity(ENTITY_ID, process.env.NORTHSTAR_MMSI);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
   await enrolDevice();
   onboardTrack = await OnboardTrack.load({
     path: REPLAY_PATH,
