@@ -19,18 +19,21 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 /**
  * Evidence layers a ship of this role never has data for. They are hidden only while
- * unavailable, so anything a scenario does produce still shows. Recorded ships keep all.
+ * unavailable, so anything a scenario does produce still shows. The lab vessel keeps all.
  */
 const NEVER_AVAILABLE: Partial<Record<Role, Set<CheckResult['check_id']>>> = {
   // Public AIS: no RF array, no Galileo authentication, no signed onboard track.
   live: new Set(['rf_lab', 'spatial_aoa', 'osnma', 'signed_vs_ais']),
-  // Synthetic ships have no signing device (RF / OSNMA stay: attacks can target them).
-  simulated: new Set(['device_signature', 'signed_vs_ais', 'attestation']),
+  // No signing device and no RF array (RF rows still show when an RF attack targets the ship).
+  simulated: new Set(['device_signature', 'attestation', 'rf_lab', 'spatial_aoa']),
+  // Replayed Digitraffic ships: same — only the lab vessel carries device / RF evidence.
+  recorded: new Set(['device_signature', 'attestation', 'rf_lab', 'spatial_aoa']),
 };
 
 export const NOT_APPLICABLE_NOTE: Partial<Record<Role, string>> = {
   live: 'not available for public AIS',
-  simulated: 'simulated ships have no signing device',
+  simulated: 'no signing device or RF array on simulated ships',
+  recorded: 'no signing device or RF array on replayed AIS ships',
 };
 
 export function visibleChecks(role: Role, checks: CheckResult[]): { shown: CheckResult[]; hidden: number } {
