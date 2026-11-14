@@ -1,0 +1,11 @@
+{
+  "region": "gulf_of_finland",
+  "source": "digitraffic",
+  "licence": "CC BY 4.0 Fintraffic Digitraffic",
+  "records": 79310,
+  "unique_mmsi": 158,
+  "note": "Polled Digitraffic AIS; multi-point Lab history is built by recording because REST from/to returns latest-only.",
+  "built_at": "2026-11-12T00:45:06.404310Z",
+  "last_appended_at": "2026-11-14T05:15:46.139Z",
+  "interval_s": 15
+}

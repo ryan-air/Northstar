@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "layout_id": "capture01",
+  "entity_id": null,
+  "observed_at": "2026-11-14T02:02:35.355990Z",
+  "mode": "lab_iq_multichannel",
+  "antennas": 2,
+  "sample_rate_hz": 12500000,
+  "center_freq_hz": 95500000,
+  "fc_note": "95.5 MHz as provided (likely IF; not L1 RF)",
+  "status": "fail",
+  "aoa_status": "fail",
+  "reason": "Synthetic single-direction overlay on real capture (ant1 \u2190 phase-locked ant0). Raw file has no labeled spoof segment.",
+  "spoof_overlay": "synthetic_single_direction_on_real_capture",
+  "metrics": {
+    "ant0_power": 0.00698484294116497,
+    "ant1_power": 0.006984842475503683,
+    "power_ratio_db": 2.895328299721939e-07,
+    "ant0_rms": 0.0835753728149924,
+    "ant1_rms": 0.08357537002911614,
+    "n_samples": 6250000
+  },
+  "aoa": {
+    "method": "two_element_phase_interferometry",
+    "mean_phase_deg": -20.053520780522064,
+    "phase_std_rad": 2.279505616739962e-08,
+    "cluster_score": 2.9023566936792353e-08,
+    "directions_deg": [
+      -10.026760390261032
+    ],
+    "coherence": 0.9999999403953552,
+    "baseline_note": "Absolute angle needs known baseline/\u03bb; relative phase used as AoA proxy"
+  }
+}

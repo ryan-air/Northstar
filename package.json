@@ -1,0 +1,41 @@
+{
+  "name": "northstar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Northstar — real-time maritime GNSS position-trust platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @northstar/contracts && npm run build -w @northstar/core && npm run build -w @northstar/server && npm run build -w @northstar/web && npm run build -w @northstar/device-sim",
+    "dev": "npm run build -w @northstar/contracts && npm run build -w @northstar/core && concurrently -n server,web,device,osnma -c blue,green,yellow,magenta \"npm run dev -w @northstar/server\" \"npm run dev -w @northstar/web\" \"npm run dev -w @northstar/device-sim\" \"npm run osnma\"",
+    "osnma": "bash -c 'cd sidecars/osnma && (test -x .venv/bin/python || bash ../../scripts/setup-osnma.sh) && PYTHONPATH=../../vendor/OSNMA .venv/bin/python runner.py'",
+    "setup:osnma": "bash scripts/setup-osnma.sh",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck -w @northstar/contracts && npm run typecheck -w @northstar/core && npm run typecheck -w @northstar/server && npm run typecheck -w @northstar/web && npm run typecheck -w @northstar/device-sim",
+    "lint": "eslint . --max-warnings 50",
+    "eval": "vitest run packages/core/src/eval/scenarios.eval.test.ts",
+    "eval:real": "tsx scripts/eval-real-ais.ts",
+    "attacker": "tsx scripts/attacker.ts",
+    "gen-certs": "bash scripts/gen-certs.sh",
+    "setup:softhsm": "bash scripts/setup-softhsm.sh",
+    "gen-keys": "tsx scripts/gen-keys.ts",
+    "check-tiles": "node scripts/check-tiles.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.16.0",
+    "@typescript-eslint/parser": "^8.16.0",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.15.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.6"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

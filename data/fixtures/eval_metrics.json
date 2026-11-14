@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-11-14T04:51:11.005Z",
+  "source": "data/replay/gof_ais.jsonl",
+  "vessels_sampled": 189,
+  "confusion": {
+    "tp": 189,
+    "fp": 22,
+    "tn": 7513,
+    "fn": 0
+  },
+  "false_positive_rate": 0.00291970802919708,
+  "false_negative_rate": 0,
+  "note": "FP/TN from nominal consecutive AIS pairs; TP/FN from inland teleport injection."
+}

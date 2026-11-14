@@ -1,0 +1,17 @@
+{
+  "id": "capture01",
+  "antennas": 2,
+  "packing": "interleaved_per_sample",
+  "order": ["ant0_I", "ant0_Q", "ant1_I", "ant1_Q"],
+  "item_type": "complex64",
+  "sample_type": "iq",
+  "dtype": "float32",
+  "fs_hz": 12500000,
+  "fc_hz": 95500000,
+  "fc_note": "95.5 MHz as provided (likely IF; not L1 RF)",
+  "bytes_per_sample": 16,
+  "duration_s_approx": 53,
+  "spoof_clean_segmentation": false,
+  "embedded_timestamps": false,
+  "source_file": "capture01.sink.gz"
+}

@@ -1,0 +1,13 @@
+{
+  "note": "Simulated spoofing-like diagnostics: plausible sat count but correlated residual spike.",
+  "labels": { "simulated": true, "fixture": true },
+  "satellite_count": 11,
+  "c_n0_dbhz": [44, 43, 45, 42, 44, 43, 46, 41, 42, 44, 43],
+  "hdop": 1.0,
+  "pdop": 1.6,
+  "agc": 30,
+  "pseudorange_residual_m": [28, 31, 27, 33, 29, 30, 32, 26, 34, 28, 31],
+  "clock_drift_ns_s": 220,
+  "interference_indicator": "suspected_spoofing",
+  "missing_inputs": []
+}

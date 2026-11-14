@@ -1,0 +1,57 @@
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+*.log
+.env
+.env.local
+.env.*.local
+
+# Secrets and local keys — never commit
+certs/
+!certs/.gitkeep
+*.pem
+*.key
+*.crt
+~/.northstar/
+.northstar/
+!.northstar/.gitkeep
+
+# Python
+sidecars/osnma/.venv/
+sidecars/osnma/__pycache__/
+sidecars/osnma/logs/
+sidecars/rf/.venv/
+sidecars/rf/__pycache__/
+*.pyc
+.pytest_cache/
+
+# Large OSNMAlib checkout (run scripts/setup-osnma.sh)
+vendor/OSNMA/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Generated geo caches (keep committed simplified outputs)
+data/geo/.cache/
+
+# Playwright
+test-results/
+playwright-report/
+
+# Editor / local agent
+.cursor/
+.vscode/
+
+data/fixtures/audit.jsonl.broken-*
+
+# RF lab captures (multi-GB) — keep layout/results JSON only
+*.sink
+*.sink.gz
+data/rf/raw/
+data/rf/clips/
+!data/rf/**/*.json
+!data/rf/**/*.md

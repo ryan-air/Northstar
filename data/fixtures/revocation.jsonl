@@ -1,0 +1,2 @@
+{"seq":1,"ts":"2026-11-14T02:30:50.931Z","action":"revoke","device_id":"DEV-REV","key_id":"DEV-REV-key-1","shore_key_id":"shore-audit-1","shore_sig":"iYaKfAJmUz9ayyb/qQjnX9ON7rIrowvJLbK7sZtKVPilrHVKGvxYoFt4mm8RluHYKvL+dLVCe6GXbVczktFJCw=="}
+{"seq":2,"ts":"2026-11-14T02:31:04.682Z","action":"revoke","device_id":"DEV-REV","key_id":"DEV-REV-key-1","shore_key_id":"shore-audit-1","shore_sig":"P26POpTd+pJSxRabx/lV0eD5FNOzC0XGL5j7jKLcG2Dc/TwBnhU2ltWW+rBqZA/QTLA2WiXjw21USy5EnYI1BA=="}

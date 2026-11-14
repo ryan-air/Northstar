@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "layout_id": "capture01",
+  "entity_id": null,
+  "observed_at": "2026-11-14T02:02:35.306381Z",
+  "mode": "lab_iq_multichannel",
+  "antennas": 2,
+  "sample_rate_hz": 12500000,
+  "center_freq_hz": 95500000,
+  "fc_note": "95.5 MHz as provided (likely IF; not L1 RF)",
+  "status": "pass",
+  "aoa_status": "pass",
+  "reason": "Dual-antenna spatial diversity consistent with distributed energy.",
+  "spoof_overlay": null,
+  "metrics": {
+    "ant0_power": 0.00698484294116497,
+    "ant1_power": 0.0032765993382781744,
+    "power_ratio_db": 3.2873330594821457,
+    "ant0_rms": 0.0835753728149924,
+    "ant1_rms": 0.0572415874891514,
+    "n_samples": 6250000
+  },
+  "aoa": {
+    "method": "two_element_phase_interferometry",
+    "mean_phase_deg": 112.95615219167513,
+    "phase_std_rad": 0.18663026365092036,
+    "cluster_score": 0.23762503192470125,
+    "directions_deg": [
+      56.478076095837565
+    ],
+    "coherence": 0.332644522190094,
+    "baseline_note": "Absolute angle needs known baseline/\u03bb; relative phase used as AoA proxy"
+  }
+}

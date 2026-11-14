@@ -1,0 +1,13 @@
+{
+  "note": "Simulated UBX-style diagnostic snapshot for UI/algorithm testing. Never claim as live receiver evidence.",
+  "labels": { "simulated": true, "fixture": true },
+  "satellite_count": 12,
+  "c_n0_dbhz": [41.2, 39.8, 42.1, 38.5, 40.0, 37.9, 43.2, 39.1, 36.8, 41.5, 38.2, 40.7],
+  "hdop": 1.1,
+  "pdop": 1.8,
+  "agc": 28,
+  "pseudorange_residual_m": [0.4, -0.3, 0.2, -0.5, 0.1, 0.6, -0.2, 0.3, -0.4, 0.2, 0.1, -0.3],
+  "clock_drift_ns_s": 12,
+  "interference_indicator": "none",
+  "missing_inputs": []
+}
