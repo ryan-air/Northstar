@@ -13,6 +13,7 @@ import { b64ToBytes, canonicalBytes, type JsonValue } from '@northstar/core';
 import * as ed from '@noble/ed25519';
 import { NorthstarApp } from './app.js';
 import { REPO_ROOT } from './config.js';
+import { labReturnSummary, listLabReturns, loadLabReturn } from './lab/labReturn.js';
 
 async function main() {
   const app = new NorthstarApp();
@@ -283,6 +284,14 @@ async function main() {
     return reply.code(result.status).send(result.body);
   });
   server.get('/api/lab/clock', async () => app.labClock());
+  /** Imported lab returns (scripts/lab/import_lab_return.py → data/lab/<id>/): readiness only, no raw rows. */
+  server.get('/api/lab/returns', async () => {
+    const root = join(REPO_ROOT, 'data', 'lab');
+    return listLabReturns(root).map((id) => {
+      const r = loadLabReturn(root, id);
+      return r ? labReturnSummary(r) : { id, error: 'unreadable' };
+    });
+  });
   /** Demo: signed envelope without challenge_nonce → fail closed when required. */
   server.post('/api/demo/challenge-miss', { preHandler: requireAdmin }, async () => {
     const { generateKeyPair, signPayload, bytesToB64 } = await import('@northstar/core');

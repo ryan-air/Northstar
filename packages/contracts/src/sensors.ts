@@ -17,6 +17,8 @@ export const GnssDiagnosticsSchema = z.object({
     .object({
       simulated: z.boolean().optional(),
       fixture: z.boolean().optional(),
+      /** Real sensor data replayed from a recording (e.g. an imported lab return). */
+      recorded: z.boolean().optional(),
     })
     .optional(),
   missing_inputs: z.array(z.string()).default([]),
@@ -39,6 +41,8 @@ export const ImuSampleSchema = z.object({
     .object({
       simulated: z.boolean().optional(),
       fixture: z.boolean().optional(),
+      /** Real sensor data replayed from a recording (e.g. an imported lab return). */
+      recorded: z.boolean().optional(),
     })
     .optional(),
 });

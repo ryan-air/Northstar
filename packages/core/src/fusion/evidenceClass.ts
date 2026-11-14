@@ -40,10 +40,13 @@ export function eventEvidenceClass(e: PositionEvent | null | undefined): Evidenc
   return 'recorded';
 }
 
-function sensorClass(labels: { simulated?: boolean; fixture?: boolean } | undefined): EvidenceClass {
+function sensorClass(
+  labels: { simulated?: boolean; fixture?: boolean; recorded?: boolean } | undefined,
+): EvidenceClass {
   if (!labels) return 'demo';
   if (labels.fixture) return 'demo';
   if (labels.simulated) return 'simulated';
+  if (labels.recorded) return 'recorded';
   return 'live';
 }
 

@@ -26,7 +26,9 @@
     "smoke": "node scripts/smoke.mjs",
     "eval:pipeline": "tsx scripts/eval-pipeline.ts",
     "eval:freeze": "tsx scripts/eval/freeze-dataset.ts",
-    "eval:gates": "tsx scripts/eval/check-gates.ts"
+    "eval:gates": "tsx scripts/eval/check-gates.ts",
+    "lab:import": "python3 -I scripts/lab/import_lab_return.py",
+    "lab:test": "python3 -I scripts/lab/test_import_lab_return.py"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
