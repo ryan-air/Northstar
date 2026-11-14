@@ -102,68 +102,21 @@ export function RightPanel() {
 
       {tab === 'evidence' && (
         <div className="tab-body">
-          {(vessel?.trust.checks ?? []).map((c) => {
-            const ev = (c.evidence ?? {}) as Record<string, unknown>;
-            const scenarioInjected =
-              !!ev.spoof_overlay ||
-              ev.fixture === true ||
-              (ev.labels as { fixture?: boolean } | undefined)?.fixture === true ||
-              /spoof_overlay|scenario|fixture|Simulated|Protocol verification demo/i.test(
-                c.explanation,
-              );
-            const dataBadge =
-              c.status === 'unavailable' || c.status === 'unsupported'
-                ? null
-                : scenarioInjected
-                  ? 'scenario-injected'
-                  : 'detected from data';
-            const mode =
-              c.check_id === 'rf_lab' || c.check_id === 'spatial_aoa'
-                ? c.status === 'unavailable'
-                  ? 'No lab RF'
-                  : 'Lab IQ / AoA'
-                : (c.source_ids ?? []).some((s) => /simulat|fixture|demo/i.test(s)) ||
-                    /\[Simulated|Protocol verification demo/i.test(c.explanation)
-                  ? c.check_id === 'osnma'
-                    ? 'Protocol demo'
-                    : 'Simulated'
-                  : c.status === 'unavailable' || c.status === 'unsupported'
-                    ? 'No live input'
-                    : 'Live path';
-            const fcHz = typeof ev.center_freq_hz === 'number' ? ev.center_freq_hz : null;
-            return (
-              <div key={c.check_id} className="evidence-row">
-                <div className="head">
-                  <strong className="mono">{c.check_id}</strong>
-                  <span className={`status-pill ${c.status}`}>{c.status}</span>
-                </div>
-                <div className="muted" style={{ fontSize: 10, marginBottom: 4 }}>
-                  mode: {mode}
-                  {dataBadge ? (
-                    <>
-                      {' · '}
-                      <span
-                        style={{
-                          color:
-                            dataBadge === 'detected from data' ? 'var(--ok)' : 'var(--warn)',
-                        }}
-                      >
-                        {dataBadge}
-                      </span>
-                    </>
-                  ) : null}
-                  {fcHz != null ? ` · fc ${(fcHz / 1e6).toFixed(3)} MHz` : ''}
-                </div>
-                <div style={{ fontSize: 12, lineHeight: 1.35 }}>{c.explanation}</div>
-                <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-                  anomaly={c.anomaly_score ?? 'n/a'} · q={(c.quality ?? 0).toFixed(2)} · fresh=
-                  {(c.freshness ?? 0).toFixed(2)} · src={(c.source_ids ?? []).join(',') || '—'}
-                  {c.missing_reason ? ` · missing: ${c.missing_reason}` : ''}
-                  {c.hard_alert ? ' · HARD' : ''}
-                </div>
+          {(vessel?.trust.checks ?? []).map((c) => (
+            <div key={c.check_id} className="evidence-row">
+              <div className="head">
+                <strong className="mono">{c.check_id}</strong>
+                <span className={`status-pill ${c.status}`}>{c.status}</span>
               </div>
-            );
-          })}
+              <div style={{ fontSize: 12, lineHeight: 1.35 }}>{c.explanation}</div>
+              <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
+                anomaly={c.anomaly_score ?? 'n/a'} · q={(c.quality ?? 0).toFixed(2)} · fresh=
+                {(c.freshness ?? 0).toFixed(2)} · src={(c.source_ids ?? []).join(',') || '—'}
+                {c.missing_reason ? ` · missing: ${c.missing_reason}` : ''}
+                {c.hard_alert ? ' · HARD' : ''}
+              </div>
+            </div>
+          ))}
           {!vessel && (
             <p className="muted" style={{ marginTop: 0 }}>
               Select a vessel to inspect evidence layers.
