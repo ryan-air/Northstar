@@ -73,7 +73,7 @@ export function checkImuConsistency(
         anomaly_score: 0,
         severity: 'none',
         observed_at: nowIso,
-        explanation: `${simulated ? '[Simulated] ' : ''}Dead-reckoning filter initializing.`,
+        explanation: `Dead-reckoning filter initializing.`,
         source_ids: [simulated ? 'imu_simulated' : 'imu'],
         quality: 0.5,
         freshness: 1,
@@ -138,13 +138,13 @@ export function checkImuConsistency(
   if (norm >= config.residual_fail_sigma) {
     anomaly = Math.min(1, norm / 8);
     status = 'fail';
-    explanation = `${simulated ? '[Simulated] ' : ''}GNSS–IMU residual ${residual.toFixed(0)} m (${norm.toFixed(1)}σ) exceeds threshold; inertial estimate disagrees with reported fix. IMU uncertainty σ≈${sigma.toFixed(0)} m.`;
+    explanation = `GNSS–IMU residual ${residual.toFixed(0)} m (${norm.toFixed(1)}σ) exceeds threshold; inertial estimate disagrees with reported fix. IMU uncertainty σ≈${sigma.toFixed(0)} m.`;
   } else if (norm >= config.residual_warn_sigma) {
     anomaly = Math.min(0.7, norm / 8);
     status = 'warning';
-    explanation = `${simulated ? '[Simulated] ' : ''}Elevated GNSS–IMU residual ${residual.toFixed(0)} m (${norm.toFixed(1)}σ).`;
+    explanation = `Elevated GNSS–IMU residual ${residual.toFixed(0)} m (${norm.toFixed(1)}σ).`;
   } else {
-    explanation = `${simulated ? '[Simulated] ' : ''}GNSS and dead-reckoning agree within uncertainty (${residual.toFixed(0)} m, ${norm.toFixed(1)}σ, σ≈${sigma.toFixed(0)} m).`;
+    explanation = `GNSS and dead-reckoning agree within uncertainty (${residual.toFixed(0)} m, ${norm.toFixed(1)}σ, σ≈${sigma.toFixed(0)} m).`;
   }
 
   // Soft-reset DR toward GNSS when consistent; when disagreeing keep DR for evidence
