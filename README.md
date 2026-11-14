@@ -54,7 +54,7 @@ npm run build
 npm run dev        # server, dashboard, signed-telemetry device simulator, OSNMA sidecar
 ```
 
-Open http://127.0.0.1:5173. Or run the parts separately:
+Open http://127.0.0.1:5173 in your browser. Alternatively, run the components separately:
 
 ```bash
 npm run dev -w @northstar/server
