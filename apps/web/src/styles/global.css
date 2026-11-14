@@ -1190,3 +1190,30 @@ body { font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased; 
 .evidence-row .head .evidence-name { font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: var(--text); }
 .evidence-text { font-size: 12px; line-height: 1.4; color: var(--text-dim); margin-top: 2px; }
 .evidence-meta { font-size: 10.5px; margin-top: 4px; }
+
+/* Security tab */
+.security-tab { padding: 4px 0 16px; }
+.sec-section { padding: 12px 14px; border-bottom: 1px solid var(--border-soft); }
+.sec-section h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--text); }
+.sec-help { margin: 0 0 8px; font-size: 11.5px; line-height: 1.45; color: var(--text-dim); }
+.sec-btn {
+  font-size: 12px; padding: 5px 12px; border-radius: 3px;
+  background: transparent; color: var(--accent); border: 1px solid var(--accent-dim);
+}
+.sec-btn:hover { border-color: var(--accent); }
+.sec-btn:disabled { opacity: 0.6; }
+.sec-result { margin-top: 8px; padding: 6px 8px; border-radius: 3px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.sec-result .mono { font-size: 10.5px; color: var(--text-muted); }
+.sec-result.ok { background: rgba(57, 185, 128, 0.08); color: var(--ok); border-left: 2px solid var(--ok); }
+.sec-result.bad { background: rgba(220, 85, 85, 0.08); color: var(--danger); border-left: 2px solid var(--danger); }
+.sec-kv { display: grid; gap: 3px; font-size: 12px; margin-bottom: 6px; }
+.sec-kv > div { display: grid; grid-template-columns: 64px 1fr; gap: 8px; }
+.sec-kv .k { color: var(--text-muted); }
+.sec-kv .ok { color: var(--ok); }
+.sec-kv .bad { color: var(--danger); }
+.sec-note, .sec-empty { font-size: 11px; color: var(--text-muted); }
+.sec-event { display: grid; grid-template-columns: 64px 1fr; gap: 8px; font-size: 12px; padding: 3px 0 3px 8px; border-left: 2px solid var(--border); margin-bottom: 2px; }
+.sec-event.warning { border-left-color: var(--warn); }
+.sec-event.critical { border-left-color: var(--danger); }
+.sec-event .when { color: var(--text-muted); font-size: 11px; }
+.sec-controls { margin: 0; padding-left: 16px; font-size: 11.5px; color: var(--text-dim); line-height: 1.6; }

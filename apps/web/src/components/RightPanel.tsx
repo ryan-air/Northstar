@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useStore } from '../lib/store';
+import { SecurityTab } from './SecurityTab';
 import { CHECK_LABEL, NOT_APPLICABLE_NOTE, roleOf, shortExplanation, shortSources, visibleChecks } from '../lib/roles';
 
 export function RightPanel() {
-  const [tab, setTab] = useState<'events' | 'evidence' | 'sources'>('events');
+  const [tab, setTab] = useState<'events' | 'evidence' | 'sources' | 'security'>('events');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const snapshot = useStore((s) => s.snapshot);
   const selectedId = useStore((s) => s.selectedId);
@@ -28,7 +29,11 @@ export function RightPanel() {
         <button className={tab === 'sources' ? 'active' : ''} onClick={() => setTab('sources')}>
           Sources
         </button>
+        <button className={tab === 'security' ? 'active' : ''} onClick={() => setTab('security')}>
+          Security
+        </button>
       </div>
+      {tab === 'security' && <SecurityTab />}
 
       {tab === 'events' && (
         <div className="tab-body events-tab">
