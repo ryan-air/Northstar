@@ -28,14 +28,24 @@ python3 -m venv sidecars/rf/.venv && sidecars/rf/.venv/bin/pip install -r sideca
 python3 scripts/rf_extract_clip.py --seconds 0.5
 sidecars/rf/.venv/bin/python sidecars/rf/analyze_aoa.py
 
-# terminal 1 — API + simulator
+# terminal 1 — API + simulator (creates local .northstar/shore keys on first run)
 npm run dev -w @northstar/server
 
 # terminal 2 — dashboard
 npm run dev -w @northstar/web
 
-# terminal 3 — signed device telemetry (after server has enrolled keys into ./.northstar/keys)
+# terminal 3 — signed device telemetry (generates .northstar/keys + enrols public key)
 npm run dev -w @northstar/device-sim
+```
+
+Shore + device **private** keys live under `.northstar/` (gitignored). Committed fixtures ship empty so every clone can generate its own keys. If you see `Revocation shore_sig invalid` or `device_already_enrolled` after pulling someone else’s local state, reset:
+
+```bash
+printf '' > data/fixtures/revocation.jsonl
+rm -f data/fixtures/revocation.jsonl.head.json data/fixtures/audit.checkpoint.json
+printf '' > data/fixtures/audit.jsonl
+echo '[]' > data/fixtures/devices.json
+# optional: rm -rf .northstar   # only if you want brand-new local keys
 ```
 
 **Both view:** live Digitraffic (partial coverage) + Hist Lab. One **FULL-STACK** Lab vessel carries crypto + OSNMA ICD + dual-antenna AoA. Raw `*.sink.gz` is gitignored.
