@@ -156,6 +156,76 @@ export class DigitrafficAdapter {
     }
   }
 
+  /** Latest known static data for a vessel (REST /vessels, or the real-time stream's metadata). */
+  setMetadata(mmsi: number, meta: DigitrafficVesselMeta): void {
+    this.metaByMmsi.set(mmsi, { ...this.metaByMmsi.get(mmsi), ...meta, mmsi });
+  }
+
+  /**
+   * One Digitraffic AIS position → PositionEvent. Shared by the REST poll and the real-time
+   * stream so both produce identical events (same validation and checks downstream).
+   */
+  buildEvent(
+    mmsi: number,
+    flat: number,
+    flon: number,
+    p: Partial<DigitrafficFeature['properties']>,
+    sourceTs: string,
+    nowIso: string,
+  ): PositionEvent {
+    const meta = this.metaByMmsi.get(mmsi);
+    const aisSecond =
+      typeof p.timestamp === 'number' && p.timestamp >= 0 && p.timestamp <= 59 ? p.timestamp : null;
+    const accuracy = accuracyFromPosAcc(p.posAcc);
+    const event: PositionEvent = {
+      schema_version: 1,
+      entity_id: `LIVE-${mmsi}`,
+      entity_type: 'vessel',
+      vessel_class: shipTypeToClass(meta?.shipType),
+      name: meta?.name?.trim() || `MMSI ${mmsi}`,
+      position: { lat: flat, lon: flon, crs: 'EPSG:4326' },
+      speed_over_ground_knots:
+        typeof p.sog === 'number' && p.sog < 102
+          ? p.sog
+          : null,
+      course_over_ground_deg:
+        typeof p.cog === 'number' && p.cog < 360
+          ? p.cog
+          : null,
+      heading_deg:
+        typeof p.heading === 'number' && p.heading >= 0 && p.heading < 360 ? p.heading : null,
+      source: 'ais',
+      provider_id: 'digitraffic',
+      upstream_lineage: ['digitraffic', 'fintraffic'],
+      source_timestamp: sourceTs,
+      ingested_at: nowIso,
+      device_signature_status: 'missing',
+      osnma_status: 'unavailable',
+      quality: {
+        // v1 used "navStat present → 50 m" (invented). Now derived from posAcc.
+        position_accuracy_m: accuracy,
+        signal_quality_available: false,
+      },
+      nav_status: typeof p.navStat === 'number' && p.navStat >= 0 && p.navStat <= 15 ? p.navStat : null,
+      rot_deg_min: decodeAisRot(p.rot),
+      rate_of_turn_deg_per_min: decodeAisRot(p.rot),
+      raim: typeof p.raim === 'boolean' ? p.raim : null,
+      ais_utc_second: aisSecond,
+      epfd_type: typeof meta?.posType === 'number' ? meta.posType : null,
+      dimensions_m: dimensionsFromMeta(meta),
+      labels: {
+        live: true,
+        fixture: false,
+        simulated: false,
+        mmsi,
+        call_sign: meta?.callSign,
+        destination: meta?.destination,
+        imo: meta?.imo,
+      },
+    };
+    return event;
+  }
+
   async poll(nowIso = new Date().toISOString()): Promise<DigitrafficPollResult> {
     this.status = this.status === 'ok' ? 'ok' : 'connecting';
     const lat = this.opts.latitude ?? 59.95;
@@ -195,63 +265,13 @@ export class DigitrafficAdapter {
         const mmsi = f.mmsi ?? f.properties?.mmsi;
         if (!mmsi) continue;
         const meta = this.metaByMmsi.get(mmsi);
-        const heading = f.properties?.heading;
-        const tsMs = f.properties?.timestampExternal;
+        const p = f.properties ?? ({} as DigitrafficFeature['properties']);
+        const tsMs = p.timestampExternal;
         const sourceTs =
           typeof tsMs === 'number' && tsMs > 0
             ? new Date(tsMs).toISOString()
             : body.dataUpdatedTime ?? nowIso;
-
-        const p = f.properties ?? ({} as DigitrafficFeature['properties']);
-        const aisSecond =
-          typeof p.timestamp === 'number' && p.timestamp >= 0 && p.timestamp <= 59 ? p.timestamp : null;
-        const accuracy = accuracyFromPosAcc(p.posAcc);
-        const event: PositionEvent = {
-          schema_version: 1,
-          entity_id: `LIVE-${mmsi}`,
-          entity_type: 'vessel',
-          vessel_class: shipTypeToClass(meta?.shipType),
-          name: meta?.name?.trim() || `MMSI ${mmsi}`,
-          position: { lat: flat, lon: flon, crs: 'EPSG:4326' },
-          speed_over_ground_knots:
-            typeof f.properties?.sog === 'number' && f.properties.sog < 102
-              ? f.properties.sog
-              : null,
-          course_over_ground_deg:
-            typeof f.properties?.cog === 'number' && f.properties.cog < 360
-              ? f.properties.cog
-              : null,
-          heading_deg:
-            typeof heading === 'number' && heading >= 0 && heading < 360 ? heading : null,
-          source: 'ais',
-          provider_id: 'digitraffic',
-          upstream_lineage: ['digitraffic', 'fintraffic'],
-          source_timestamp: sourceTs,
-          ingested_at: nowIso,
-          device_signature_status: 'missing',
-          osnma_status: 'unavailable',
-          quality: {
-            // v1 used "navStat present → 50 m" (invented). Now derived from posAcc.
-            position_accuracy_m: accuracy,
-            signal_quality_available: false,
-          },
-          nav_status: typeof p.navStat === 'number' && p.navStat >= 0 && p.navStat <= 15 ? p.navStat : null,
-          rot_deg_min: decodeAisRot(p.rot),
-          rate_of_turn_deg_per_min: decodeAisRot(p.rot),
-          raim: typeof p.raim === 'boolean' ? p.raim : null,
-          ais_utc_second: aisSecond,
-          epfd_type: typeof meta?.posType === 'number' ? meta.posType : null,
-          dimensions_m: dimensionsFromMeta(meta),
-          labels: {
-            live: true,
-            fixture: false,
-            simulated: false,
-            mmsi,
-            call_sign: meta?.callSign,
-            destination: meta?.destination,
-            imo: meta?.imo,
-          },
-        };
+        const event = this.buildEvent(mmsi, flat, flon, p, sourceTs, nowIso);
         events.push(event);
         records.push({
           mmsi,

@@ -11,8 +11,7 @@
  * Vessel metadata from the same stream goes to <out>.meta.json.
  * Data: Fintraffic / Digitraffic, CC BY 4.0.
  *
- * Minimal MQTT 3.1.1 client (CONNECT, SUBSCRIBE QoS 0, PUBLISH receive, PINGREQ) on Node's
- * built-in WebSocket, so no extra dependency.
+ * Uses the shared minimal MQTT-over-WebSocket framing in apps/server/src/adapters/mqttWs.ts.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -37,65 +36,9 @@ const [minLon, minLat, maxLon, maxLat] = (arg('bbox') ?? '22,59,31,61').split(',
 ];
 const STOP_AFTER_MS = arg('minutes') ? Number(arg('minutes')) * 60_000 : null;
 
-// ---------------------------------------------------------------- MQTT framing
-
-function encLen(n: number): number[] {
-  const out: number[] = [];
-  do {
-    let b = n % 128;
-    n = Math.floor(n / 128);
-    if (n > 0) b |= 0x80;
-    out.push(b);
-  } while (n > 0);
-  return out;
-}
-
-function str(s: string): Buffer {
-  const b = Buffer.from(s, 'utf8');
-  return Buffer.concat([Buffer.from([b.length >> 8, b.length & 0xff]), b]);
-}
-
-function packet(type: number, body: Buffer): Buffer {
-  return Buffer.concat([Buffer.from([type, ...encLen(body.length)]), body]);
-}
-
-const connectPkt = (clientId: string, keepalive: number) =>
-  packet(
-    0x10,
-    Buffer.concat([str('MQTT'), Buffer.from([4, 0x02, keepalive >> 8, keepalive & 0xff]), str(clientId)]),
-  );
-
-const subscribePkt = (id: number, topics: string[]) =>
-  packet(
-    0x82,
-    Buffer.concat([Buffer.from([id >> 8, id & 0xff]), ...topics.map((t) => Buffer.concat([str(t), Buffer.from([0])]))]),
-  );
+import { connectPacket as connectPkt, parsePackets, subscribePacket as subscribePkt } from '../../apps/server/src/adapters/mqttWs.js';
 
 const PINGREQ = Buffer.from([0xc0, 0x00]);
-
-/** Split a byte stream into complete MQTT packets; returns leftover bytes. */
-function parsePackets(buf: Buffer, onPacket: (type: number, flags: number, body: Buffer) => void): Buffer {
-  let off = 0;
-  while (buf.length - off >= 2) {
-    let mult = 1;
-    let len = 0;
-    let i = off + 1;
-    let done = false;
-    for (; i < buf.length && i < off + 5; i++) {
-      len += (buf[i]! & 0x7f) * mult;
-      mult *= 128;
-      if ((buf[i]! & 0x80) === 0) {
-        done = true;
-        i++;
-        break;
-      }
-    }
-    if (!done || buf.length < i + len) break;
-    onPacket(buf[off]! >> 4, buf[off]! & 0x0f, buf.subarray(i, i + len));
-    off = i + len;
-  }
-  return buf.subarray(off);
-}
 
 // ---------------------------------------------------------------- recorder
 
