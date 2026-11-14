@@ -107,11 +107,17 @@ button {
 
 /* Header */
 .top-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 18px;
   padding: 0 14px;
   background: linear-gradient(180deg, #141d26 0%, #0e151c 100%);
+}
+
+.top-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .brand {
@@ -149,7 +155,6 @@ button {
 .instruments {
   display: flex;
   gap: 16px;
-  flex: 1;
 }
 
 .instrument {
@@ -178,12 +183,14 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-left: auto;
+  justify-content: flex-end;
 }
 
-.feed-leds {
-  display: flex;
-  gap: 6px;
+.mode-desc {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
 }
 
 .led {
@@ -515,20 +522,6 @@ button {
 .view-toggle button.active {
   background: var(--accent-dim);
   color: var(--text);
-}
-.live-pill {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-}
-.live-pill.on {
-  border-color: #4ec4f0;
-  color: #4ec4f0;
-}
-.live-pill.off {
-  color: var(--text-muted);
 }
 .live-card {
   margin: 0 10px 10px;
