@@ -3,7 +3,7 @@ import type { ViewMode } from '../lib/types';
 
 const MODE_DESC: Record<ViewMode, string> = {
   live: 'LIVE AIS · Digitraffic',
-  lab: 'HIST LAB · Recorded AIS',
+  lab: 'Digitraffic historical replay',
   both: 'LIVE + HIST · Both feeds',
 };
 
@@ -23,7 +23,7 @@ export function TopBar() {
           <div className="brand-mark">NORTHSTAR</div>
           <div className="brand-sub">Integrity</div>
         </div>
-        <div className="mode-badge">{snapshot?.monitoring_label ?? 'CONNECTING'}</div>
+        <div className="mode-badge">{snapshot ? 'SIMULATION' : 'CONNECTING'}</div>
       </div>
 
       {/* Center zone — anchored instruments */}

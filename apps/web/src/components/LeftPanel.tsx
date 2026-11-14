@@ -1,4 +1,15 @@
 import { useStore } from '../lib/store';
+import type { TrustBand } from '../lib/types';
+
+// Stable ordering: worst band first, then by entity_id. Sorting by exact trust
+// score churns the list every tick (scores wobble, rows reorder, scroll jumps),
+// so we bucket by band and only reorder when a vessel actually crosses a band.
+const BAND_RANK: Record<TrustBand, number> = {
+  critical: 0,
+  suspicious: 1,
+  caution: 2,
+  high: 3,
+};
 
 export function LeftPanel() {
   const snapshot = useStore((s) => s.snapshot);
@@ -9,9 +20,12 @@ export function LeftPanel() {
 
   const vessel = vessels.find((v) => v.entity_id === selectedId);
 
-  const sortedVessels = [...vessels].sort(
-    (a, b) => (a.trust.trust_score ?? 100) - (b.trust.trust_score ?? 100),
-  );
+  const sortedVessels = [...vessels].sort((a, b) => {
+    const ra = BAND_RANK[a.trust.trust_band] ?? 9;
+    const rb = BAND_RANK[b.trust.trust_band] ?? 9;
+    if (ra !== rb) return ra - rb;
+    return a.entity_id.localeCompare(b.entity_id);
+  });
 
   const clearSelection = () => useStore.setState({ selectedId: null });
 
@@ -43,20 +57,6 @@ export function LeftPanel() {
           <div className="n">{live?.vessel_count ?? 0}</div>
           <div className="l">Live Ships</div>
         </div>
-      </div>
-
-      <div className="vessel-list">
-        {sortedVessels.map((v) => (
-          <button
-            key={v.entity_id}
-            type="button"
-            className={`live-row${selectedId === v.entity_id ? ' active' : ''}`}
-            onClick={() => useStore.getState().selectVessel(v.entity_id)}
-          >
-            <span className="name">{v.name ?? v.entity_id}</span>
-            <span className={`band ${v.trust.trust_band}`}>{v.trust.trust_score}</span>
-          </button>
-        ))}
       </div>
 
       {vessel && (
@@ -106,6 +106,21 @@ export function LeftPanel() {
           )}
         </div>
       )}
+
+      <div className="panel-title">Vessels</div>
+      <div className="vessel-list">
+        {sortedVessels.map((v) => (
+          <button
+            key={v.entity_id}
+            type="button"
+            className={`live-row${selectedId === v.entity_id ? ' active' : ''}`}
+            onClick={() => useStore.getState().selectVessel(v.entity_id)}
+          >
+            <span className="name">{v.name ?? v.entity_id}</span>
+            <span className={`band ${v.trust.trust_band}`}>{v.trust.trust_score}</span>
+          </button>
+        ))}
+      </div>
     </aside>
   );
 }
