@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../lib/store';
+import { NOT_APPLICABLE_NOTE, roleOf, visibleChecks } from '../lib/roles';
 
 export function RightPanel() {
   const [tab, setTab] = useState<'events' | 'evidence' | 'sources'>('events');
@@ -9,6 +10,8 @@ export function RightPanel() {
   const vessel = snapshot?.vessels?.find((v) => v.entity_id === selectedId);
   const events = [...(snapshot?.timeline ?? [])].reverse();
   const selectedEvent = events.find((e) => e.id === selectedEventId) ?? null;
+  const role = vessel ? roleOf(vessel, snapshot) : 'recorded';
+  const evidence = visibleChecks(role, vessel?.trust.checks ?? []);
 
   return (
     <aside className="panel right">
@@ -102,7 +105,12 @@ export function RightPanel() {
 
       {tab === 'evidence' && (
         <div className="tab-body">
-          {(vessel?.trust.checks ?? []).map((c) => (
+          {vessel && evidence.hidden > 0 && (
+            <p className="muted evidence-hidden-note">
+              {evidence.hidden} layer{evidence.hidden > 1 ? 's' : ''} hidden — {NOT_APPLICABLE_NOTE[role]}.
+            </p>
+          )}
+          {evidence.shown.map((c) => (
             <div key={c.check_id} className="evidence-row">
               <div className="head">
                 <strong className="mono">{c.check_id}</strong>

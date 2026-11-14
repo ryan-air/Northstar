@@ -1,23 +1,6 @@
 import { useEffect } from 'react';
 import { useStore } from '../lib/store';
-import type { AppSnapshot, VesselState } from '../lib/types';
-
-type Role = 'live' | 'recorded' | 'simulated' | 'lab';
-
-/** Where a ship's data comes from — attacks are only ever injected into 'simulated' ships. */
-function roleOf(v: VesselState, s: AppSnapshot | null): Role {
-  if (v.origin === 'live') return 'live';
-  if (s?.injection?.lab_vessel_id === v.entity_id) return 'lab';
-  if (s?.injection?.simulated_ships.includes(v.entity_id)) return 'simulated';
-  return 'recorded';
-}
-
-const ROLE_LABEL: Record<Role, string> = {
-  live: 'LIVE AIS',
-  recorded: 'RECORDED AIS',
-  simulated: 'SIMULATED · attack target',
-  lab: 'LAB VESSEL · independent sensors',
-};
+import { ROLE_LABEL, roleOf } from '../lib/roles';
 
 const hhmm = (iso: string) => iso.slice(11, 16);
 

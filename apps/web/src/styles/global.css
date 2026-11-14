@@ -1007,3 +1007,5 @@ button {
   padding: 3px 8px;
   white-space: nowrap;
 }
+
+.evidence-hidden-note { font-size: 10px; margin: 0 0 8px; }
