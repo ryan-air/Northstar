@@ -5,6 +5,8 @@ import { REPO_ROOT } from '../config.js';
 
 interface FC {
   type: 'FeatureCollection';
+  /** Set by scripts/geo/build_osm_geo.py when land is cut on a grid. */
+  seam_grid_deg?: number;
   features: Array<{
     type: 'Feature';
     id?: string;
@@ -76,7 +78,7 @@ export function loadGeo(opts: LoadGeoOptions = {}): GeoData {
   }));
 
   return {
-    land: buildLandIndex(landFeatures),
+    land: buildLandIndex(landFeatures, { seamGridDeg: landGeoJson.seam_grid_deg }),
     ports,
     restricted,
     landGeoJson,

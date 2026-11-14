@@ -25,20 +25,26 @@ raw AIS stream); vessel metadata is as of fetch time, not per report.
 | legacy v1, raw (dups kept, no validation) | all | 23.8% | 91.8% | 18.6% | 2.5% | 189 / 193 |
 | v1 | calibration | 28.3% | 15.2% | 13.4% | 2.8% | 133 / 150 |
 | v1 | held-out | 59.9% | 43.5% | 17.7% | 11.7% | 152 / 156 |
-| **v2** | calibration | 9.1% | 0.0% | 13.4% | 0 | 17 / 150 |
-| **v2** | **held-out** | **13.4%** | **1.6%** | **17.7%** | **0** | **42 / 156** |
+| v2, simplified land (before OSM) | held-out | 13.4% | 1.6% | 17.7% | 0 | 42 / 156 |
+| **v2 + OSM land** | calibration | 1.6% | 0.0% | 1.6% | 0 | 3 / 150 |
+| **v2 + OSM land** | **held-out** | **3.2%** | **1.6%** | **1.6%** | **0** | **27 / 156** |
 
 - The audit baseline (39% suspicious, kinematics 27% warning) was **not reproduced exactly**;
   the raw-recording reproduction gives 23.8% / 91.8% warn+. The kinematics warnings are mostly
   dt = 0 duplicates.
-- v2's remaining false alarms are almost entirely **geographic**: the land polygons are three
-  hand-drawn shapes and ports like Vuosaari are missing. 25 vessels were critical while
-  stationary on the held-out split (plan target 0). Fix = P2.1 OSM data
-  (`scripts/geo/build-osm-geo.ts`, not yet run).
+- Installing the OSM coastline (`scripts/geo/build_osm_geo.py`, provenance in
+  `data/geo/osm_provenance.json`) cut held-out false alarms from 13.4% to 3.2% and vessels
+  critical while stationary from 25 to 7 (plan target 0).
+- The remaining geographic flags on the held-out split are two **on-land test transponders**
+  (FURUNOP, a static unit inland near Espoo; TESTSHIP 299999999 in Tallinn), not ships.
+- OSM port coverage is thin: mostly quays/piers, few `landuse=port` areas, nothing found at
+  Kunda. With edge distance + hull tolerance this matters less, but port polygons are still a
+  data gap.
 - Identity flags 0.5% of events — all TESTSHIP (MMSI 299999999, MID 299 unallocated).
-- Plan target "held-out ≤2% suspicious or worse" is **not met** (13.4%) until P2.1 lands.
+- Plan target "held-out ≤2% suspicious or worse" is **not met** (3.2%). Excluding the two test
+  transponders it is about 1.6%, but they are left in the numbers.
 
-## Attack recall — v2, held-out split
+## Attack recall — v2, held-out split (unchanged by the OSM data except baselines)
 
 Recall = share of attacked vessels whose trust reached suspicious/critical on an attacked
 report (ingest attacks: share of attacked reports rejected). "Pre" = how often those vessels
