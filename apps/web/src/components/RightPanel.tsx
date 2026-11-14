@@ -117,13 +117,13 @@ export function RightPanel() {
                 <span className={`status-pill ${c.status}`}>{c.status}</span>
                 {c.evidence_class && c.status !== 'unavailable' && c.status !== 'unsupported' && (
                   <span
-                    className={`evidence-pill ${c.evidence_class}`}
-                    title="Where this evidence comes from: live feed, recorded data, simulated/synthetic, or a fixed test sample"
+                    className={`evidence-pill ${c.evidence_class === 'demo' ? 'simulated' : c.evidence_class}`}
+                    title="Where this evidence comes from: live feed, recorded data, or simulated/synthetic values"
                   >
                     {c.evidence_class === 'simulated' && /synthetic/i.test(c.explanation)
                       ? 'synthetic'
                       : c.evidence_class === 'demo'
-                        ? 'fixture'
+                        ? 'simulated'
                         : c.evidence_class}
                   </span>
                 )}

@@ -22,10 +22,11 @@ export const ROLE_LABEL: Record<Role, string> = {
  * unavailable, so anything a scenario does produce still shows. The lab vessel keeps all.
  */
 const NEVER_AVAILABLE: Partial<Record<Role, Set<CheckResult['check_id']>>> = {
-  // Public AIS: no RF array, no Galileo authentication, no signed onboard track.
-  live: new Set(['rf_lab', 'spatial_aoa', 'osnma', 'signed_vs_ais']),
+  // Public AIS: no RF array, no Galileo authentication, no signed onboard track, no
+  // receiver diagnostics, no IMU and no device attestation.
+  live: new Set(['rf_lab', 'spatial_aoa', 'osnma', 'signed_vs_ais', 'gnss_diagnostics', 'imu', 'attestation']),
   // No signing device and no RF array (RF rows still show when an RF attack targets the ship).
-  simulated: new Set(['device_signature', 'attestation', 'rf_lab', 'spatial_aoa']),
+  simulated: new Set(['device_signature', 'attestation', 'rf_lab', 'spatial_aoa', 'signed_vs_ais']),
   // Replayed Digitraffic ships: same — only the lab vessel carries device / RF evidence.
   recorded: new Set(['device_signature', 'attestation', 'rf_lab', 'spatial_aoa']),
 };
