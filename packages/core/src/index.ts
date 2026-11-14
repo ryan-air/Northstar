@@ -20,3 +20,4 @@ export * from './fusion/fuse.js';
 export * from './fusion/evidenceClass.js';
 export * from './checks/fleetCoherenceV2.js';
 export * from './checks/identity.js';
+export * from './checks/transponderKind.js';

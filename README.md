@@ -56,11 +56,15 @@ Open http://127.0.0.1:5173
 
 See [DEMO_SCRIPT.md](DEMO_SCRIPT.md). Short version:
 
-1. Confirm **SIMULATION** badge and healthy fleet trust.
-2. Run **Sudden spoof / teleport** — inland jump, trust drop, evidence on kinematics + geographic.
+1. Confirm the view badge and healthy fleet trust (Hist Lab = recorded ships + three labelled synthetic ships).
+2. Run **Sudden spoof / teleport** — it lands on a synthetic ship (attacks are never injected into recorded or live vessels); inland jump, trust drop, evidence on kinematics + geographic.
 3. **Reset**, then **Gradual drift**.
 4. **Signed telemetry tamper** and **Replayed signed message** (device-sim must be running).
 5. Inspect OSNMA / IMU / GNSS rows — labelled demo/simulated/unavailable as appropriate.
+
+Measured numbers (false alarms, attack recall with 95% ranges): [EVALUATION.md](EVALUATION.md).
+Lab data: `npm run lab:import -- --workbook <xlsx> --files <dir>` (template in `docs/lab-data/`).
+Dense AIS recording for evaluation: `npm run record:stream` (Digitraffic MQTT, no key).
 
 ## Tests
 

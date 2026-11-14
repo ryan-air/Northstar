@@ -8,14 +8,16 @@
 
 ## 90-second path
 
-1. **Both** map — live (cyan) + Hist Lab together.
-2. Left panel → **Full-stack** ship → Evidence: `spatial_aoa` + `rf_lab` **pass**, OSNMA pass, device signature.
-3. Scenarios → **RF AoA single-direction** → AoA **fail** (labeled synthetic overlay on real IQ).
-4. **Tamper** / **Replay** → forensics fail-closed. Cyber → **Send without challenge** → reject.
+1. **Both** map — live (cyan) + Hist Lab together. Hist Lab = recorded Digitraffic ships **plus three synthetic ships** (`VESSEL-00x`, labelled *simulated*).
+2. Left panel → **Full-stack** ship → Evidence: `spatial_aoa` + `rf_lab` (demo capture), OSNMA (ICD test vector), device signature. Each row shows its evidence class.
+3. Scenarios → **Sudden spoof** / **Gradual drift** / **RF AoA single-direction** → the attack lands on a **synthetic** ship (the API answers with `target` and, if you had a recorded ship selected, `retargeted_from`). Trust drops; kinematics / geographic / AoA fail.
+4. **Tamper** / **Replay** → forensics fail-closed (attacks the simulated device channel, not the recorded AIS). Cyber → **Send without challenge** → reject.
 5. Click a **non-fullstack Hist Lab** ship → OSNMA unavailable (“bound to full-stack only”). **LIVE** → RF/AoA/OSNMA unavailable.
 6. Verify audit → CHAIN + CHECKPOINT OK. Shore signs tips; device-sim holds device keys (`role=shore`).
 
-Say: “AoA needs a receiver path. Digitraffic has none — we don’t fake it.”
+Say: “We never inject attacks into recorded or live ships — only into ships we simulate. AoA needs a receiver path; Digitraffic has none, so we don’t fake it.”
+
+Injection policy: `NORTHSTAR_LAB_SIM_SHIPS` (default 3) sets how many synthetic ships join the Hist Lab; `NORTHSTAR_LEGACY_LAB_INJECTION=true` restores the old behaviour (attacks on the recorded full-stack ship) for comparison only.
 
 ---
 

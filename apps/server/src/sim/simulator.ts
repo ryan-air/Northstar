@@ -155,6 +155,10 @@ export class Simulator {
       const base = this.toEvent(v, reported, 'ais_provider_a', 'provider_a', simTimeIso, [
         'fixture_gof_ais',
       ]);
+      // stale_clock_skew: target's timestamps shifted back 10 min → rejected at ingest.
+      if (this.scenario.staleClock && v.def.entity_id === this.scenario.targetId) {
+        base.source_timestamp = new Date(this.simTimeMs - 10 * 60_000).toISOString();
+      }
       aisA.push(base);
 
       // IMU is reconstructed from the simulated AIS kinematics, never scenario-forced.

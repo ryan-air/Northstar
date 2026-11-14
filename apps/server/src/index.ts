@@ -207,6 +207,8 @@ async function main() {
   server.get('/api/lab', async () => ({
     ...app.snapshot().lab,
     use_historical: app.useHistoricalLab,
+    injection_policy: app.injectionPolicyActive() ? 'simulated_only' : 'legacy',
+    simulated_ships: app.simulatedShipIds(),
   }));
 
   server.post('/api/view-mode', async (req, reply) => {
@@ -428,8 +430,14 @@ async function main() {
     };
   });
 
+  // Display copies of the polygon layers: simplified once, cached, gzipped on request.
+  // ?detail=full serves the exact geometry the checks use.
+  const { simplifyForDisplay } = await import('./geo/displaySimplify.js');
+  const { gzipSync } = await import('node:zlib');
+  const geoCache = new Map<string, { json: string; gz: Buffer }>();
   server.get('/api/geo/:layer', async (req, reply) => {
     const layer = (req.params as { layer: string }).layer;
+    const full = (req.query as { detail?: string }).detail === 'full';
     const map: Record<string, unknown> = {
       land: app.geo.landGeoJson,
       ports: app.geo.portsGeoJson,
@@ -437,7 +445,27 @@ async function main() {
       restricted: app.geo.restrictedGeoJson,
     };
     if (!map[layer]) return reply.code(404).send({ error: 'unknown_layer' });
-    return map[layer];
+    const key = `${layer}:${full ? 'full' : 'display'}`;
+    let c = geoCache.get(key);
+    if (!c) {
+      const src = map[layer] as Parameters<typeof simplifyForDisplay>[0];
+      const data = full
+        ? src
+        : layer === 'land'
+          ? simplifyForDisplay(src)
+          : layer === 'ports'
+            ? simplifyForDisplay(src, 0.00005, 0) // keep every quay/pier
+            : src;
+      const json = JSON.stringify(data);
+      c = { json, gz: gzipSync(json) };
+      geoCache.set(key, c);
+    }
+    reply.header('content-type', 'application/json; charset=utf-8').header('cache-control', 'public, max-age=3600');
+    reply.header('vary', 'accept-encoding');
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''))) {
+      return reply.header('content-encoding', 'gzip').send(c.gz);
+    }
+    return reply.send(c.json);
   });
 
   server.post('/api/scenario', {
@@ -446,8 +474,8 @@ async function main() {
   }, async (req, reply) => {
     const parsed = ScenarioCommandSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
-    app.setScenario(parsed.data.scenario, parsed.data.entity_id);
-    return { ok: true, snapshot: app.snapshot() };
+    const applied = app.setScenario(parsed.data.scenario, parsed.data.entity_id);
+    return { ok: true, ...applied, snapshot: app.snapshot() };
   });
 
   server.post('/api/select', async (req, reply) => {

@@ -153,9 +153,11 @@ describe('security + lab v2', () => {
 
   it('P3.5: stale_clock_skew makes ingest reject the target (counter rises)', () => {
     const before = app.labRejections().stale ?? 0;
-    app.setScenario('stale_clock_skew', app.fullstackEntityId()!);
-    // Recorded tracks are sparse (reports every 1–20 min): tick until the target reports.
-    for (let i = 0; i < 600 && (app.labRejections().stale ?? 0) <= before; i++) app.tick();
+    // Injection policy: stale clock goes to a simulated ship (reports every tick), never
+    // to the historical full-stack vessel.
+    const applied = app.setScenario('stale_clock_skew', app.fullstackEntityId()!);
+    expect(app.simulatedShipIds()).toContain(applied.target);
+    for (let i = 0; i < 20 && (app.labRejections().stale ?? 0) <= before; i++) app.tick();
     expect((app.labRejections().stale ?? 0)).toBeGreaterThan(before);
     const fs = app.forensics.list(50).find((e) => e.kind === 'ingest_rejected');
     expect(fs?.explanation).toMatch(/stale/);

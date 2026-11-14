@@ -50,6 +50,17 @@ const OUT = OUT_ARG.startsWith('/') ? OUT_ARG : join(ROOT, OUT_ARG);
 
 const tOf = (e: PositionEvent) => Date.parse(e.source_timestamp);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((1000 * a) / b) / 10 : null);
+/** Wilson score 95% interval for k successes out of n, in percent (one decimal). */
+function wilson95(k: number, n: number): [number, number] | null {
+  if (!(n > 0)) return null;
+  const z = 1.96;
+  const p = k / n;
+  const d = 1 + (z * z) / n;
+  const c = p + (z * z) / (2 * n);
+  const h = z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n));
+  const r = (x: number) => Math.round(1000 * Math.min(1, Math.max(0, x))) / 10;
+  return [r((c - h) / d), r((c + h) / d)];
+}
 
 // ———————————————————————————————————————————— clean-data metrics
 interface SplitAcc {
@@ -149,6 +160,12 @@ function summarise(acc: SplitAcc) {
 function runClean(cfg: RunConfig, events: PositionEvent[]) {
   const engine = makeEngine(cfg);
   const accs: Record<SplitId, SplitAcc> = { calibration: newAcc(), test: newAcc() };
+  // Same metrics with non-vessel transponders (test units, base stations, AtoN) left out.
+  const vesselAccs: Record<SplitId, SplitAcc> = { calibration: newAcc(), test: newAcc() };
+  const nonVessel: Record<SplitId, Map<string, { events: number; flagged: number; reasons: string[] }>> = {
+    calibration: new Map(),
+    test: new Map(),
+  };
   const speedBase = makeSpeedBaseline(engine);
   runEvents(engine, events, undefined, (p) => {
     const split = splitOf(p.now);
@@ -159,32 +176,53 @@ function runClean(cfg: RunConfig, events: PositionEvent[]) {
       return;
     }
     const t = p.trust!;
-    acc.events++;
-    acc.bands[t.trust_band] = (acc.bands[t.trust_band] ?? 0) + 1;
-    for (const c of t.checks) {
-      if (c.status === 'warning') acc.checkWarn[c.check_id] = (acc.checkWarn[c.check_id] ?? 0) + 1;
-      if (c.status === 'fail') acc.checkFail[c.check_id] = (acc.checkFail[c.check_id] ?? 0) + 1;
+    const isNonVessel = t.transponder_kind === 'non_vessel_transponder';
+    if (isNonVessel) {
+      const nv = nonVessel[split].get(p.event.entity_id) ?? { events: 0, flagged: 0, reasons: [] };
+      nv.events++;
+      if (isFlagged(t)) nv.flagged++;
+      nv.reasons = t.transponder_kind_reasons ?? [];
+      nonVessel[split].set(p.event.entity_id, nv);
     }
     const flagged = isFlagged(t);
     const stationary = (p.event.speed_over_ground_knots ?? 0) < 0.5;
     const port = inPort(engine.geo, p.event.position.lat, p.event.position.lon);
-    const bucket = (b: { n: number; flagged: number }) => {
-      b.n++;
-      if (flagged) b.flagged++;
-    };
-    bucket(stationary ? acc.stationary : acc.underway);
-    bucket(port ? acc.port : acc.outside);
-    acc.vessels.add(p.event.entity_id);
-    if (flagged) acc.flaggedVessels.add(p.event.entity_id);
-    if (stationary && t.trust_band === 'critical') acc.criticalStationaryVessels.add(p.event.entity_id);
-    if (speedBase(p.event)) acc.baselineSpeed++;
-    if (landBaseline(engine, p.event)) acc.baselineLand++;
+    const sb = speedBase(p.event);
+    const lb = landBaseline(engine, p.event);
+    for (const a of isNonVessel ? [acc] : [acc, vesselAccs[split]]) {
+      a.events++;
+      a.bands[t.trust_band] = (a.bands[t.trust_band] ?? 0) + 1;
+      for (const c of t.checks) {
+        if (c.status === 'warning') a.checkWarn[c.check_id] = (a.checkWarn[c.check_id] ?? 0) + 1;
+        if (c.status === 'fail') a.checkFail[c.check_id] = (a.checkFail[c.check_id] ?? 0) + 1;
+      }
+      const bucket = (b: { n: number; flagged: number }) => {
+        b.n++;
+        if (flagged) b.flagged++;
+      };
+      bucket(stationary ? a.stationary : a.underway);
+      bucket(port ? a.port : a.outside);
+      a.vessels.add(p.event.entity_id);
+      if (flagged) a.flaggedVessels.add(p.event.entity_id);
+      if (stationary && t.trust_band === 'critical') a.criticalStationaryVessels.add(p.event.entity_id);
+      if (sb) a.baselineSpeed++;
+      if (lb) a.baselineLand++;
+    }
   });
   return {
     config: cfg,
     config_versions: engine.pipeline.configVersions,
     geo_datasets: engine.geo.datasets,
-    splits: { calibration: summarise(accs.calibration), test: summarise(accs.test) },
+    splits: Object.fromEntries(
+      (['calibration', 'test'] as const).map((s) => [
+        s,
+        {
+          ...summarise(accs[s]),
+          vessels_only: summarise(vesselAccs[s]),
+          non_vessel_transponders: [...nonVessel[s].entries()].map(([entity_id, v]) => ({ entity_id, ...v })),
+        },
+      ]),
+    ),
   };
 }
 
@@ -353,6 +391,9 @@ function summariseAttack(spec: AttackSpec, o: AttackOutcome) {
     skipped_no_suitable_window: o.skipped,
     targets: o.targets,
     recall_pct: spec.layer === 'ingest' ? pct(o.ingest_rejected, o.ingest_attacked) : pct(o.detected, o.targets),
+    /** Wilson 95% interval on recall (small n: read the range, not the point estimate). */
+    recall_ci95_pct:
+      spec.layer === 'ingest' ? wilson95(o.ingest_rejected, o.ingest_attacked) : wilson95(o.detected, o.targets),
     recall_basis:
       spec.layer === 'ingest'
         ? 'share of attacked reports rejected at ingest'

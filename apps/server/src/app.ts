@@ -97,6 +97,14 @@ export class NorthstarApp {
   geo: GeoData;
   /** Synthetic fallback if no Digitraffic recording cache yet */
   sim: Simulator;
+  /**
+   * Injection policy: attacks are injected only into simulated ships, never into
+   * historical (recorded) or live vessels. In Hist Lab mode a few synthetic ships run on
+   * the Lab clock as attack targets. NORTHSTAR_LEGACY_LAB_INJECTION=true restores the old
+   * behaviour (attacks injected into the historical signed vessel).
+   */
+  readonly legacyLabInjection = process.env.NORTHSTAR_LEGACY_LAB_INJECTION === 'true';
+  readonly labSimShipIds: Set<string>;
   lab: HistoricalLab;
   recorder: HistoricalRecorder;
   pipeline: TrustPipeline;
@@ -186,6 +194,8 @@ export class NorthstarApp {
       this.env.aisstreamKey,
     );
     this.sim = new Simulator(this.env.seed);
+    const nSim = Math.max(0, Number(process.env.NORTHSTAR_LAB_SIM_SHIPS ?? 3) || 0);
+    this.labSimShipIds = new Set(this.sim.vessels.slice(0, nSim).map((v) => v.def.entity_id));
     this.lab = new HistoricalLab();
     this.recorder = new HistoricalRecorder();
     const devicesPath = this.dataDir
@@ -533,10 +543,11 @@ export class NorthstarApp {
 
   private activeScenario(): { id: ScenarioId; targetId: string; osnmaFail: boolean; tickCount: number; simTimeMs: number } {
     if (this.useHistoricalLab) {
+      const simActive = this.injectionPolicyActive() && this.sim.scenario.id !== 'normal';
       return {
-        id: this.lab.scenario.id,
-        targetId: this.lab.scenario.targetId,
-        osnmaFail: this.lab.scenario.osnmaFail,
+        id: simActive ? this.sim.scenario.id : this.lab.scenario.id,
+        targetId: simActive ? this.sim.scenario.targetId : this.lab.scenario.targetId,
+        osnmaFail: simActive ? false : this.lab.scenario.osnmaFail,
         tickCount: this.lab.tickCount,
         simTimeMs: this.lab.simTimeMs,
       };
@@ -556,8 +567,30 @@ export class NorthstarApp {
   }
 
   tick(): void {
+    const labPrevMs = this.lab.simTimeMs;
     const batch = this.useHistoricalLab ? this.lab.tick(1) : this.sim.tick(1);
-    const { aisB, imu, gnss, simTimeIso } = batch;
+    const { simTimeIso } = batch;
+    const aisB = [...batch.aisB];
+    const imu = [...batch.imu];
+    const gnss = [...batch.gnss];
+    const incomingA = [...batch.aisA];
+    if (this.useHistoricalLab && this.labSimShipIds.size > 0) {
+      // Synthetic attack-target ships on the Lab clock (labelled simulated).
+      const dtS = (this.lab.simTimeMs - labPrevMs) / 1000;
+      const wrappedNow = 'wrapped' in batch && batch.wrapped;
+      if (wrappedNow || !(dtS > 0)) {
+        for (const id of this.labSimShipIds) this.pipeline.removeEntity(id);
+        this.sim.simTimeMs = this.lab.simTimeMs;
+      } else {
+        this.sim.simTimeMs = labPrevMs;
+        const sb = this.sim.tick(dtS);
+        const keep = <T extends { entity_id: string }>(xs: T[]) => xs.filter((x) => this.labSimShipIds.has(x.entity_id));
+        incomingA.push(...keep(sb.aisA));
+        aisB.push(...keep(sb.aisB));
+        imu.push(...keep(sb.imu));
+        gnss.push(...keep(sb.gnss));
+      }
+    }
     const scenario = this.activeScenario();
     if ('wrapped' in batch && batch.wrapped) {
       // P3.3: timeline looped — clear Lab entities and hard-alert state so the jump
@@ -571,7 +604,7 @@ export class NorthstarApp {
     // P1.4: validate every Lab event against the replay clock; rejects go to forensics only.
     const nowDate = new Date(simTimeIso);
     const aisA: typeof batch.aisA = [];
-    for (const e of batch.aisA) {
+    for (const e of incomingA) {
       const out = this.labValidator.validate(e, nowDate);
       if (out.ok) {
         aisA.push(out.event);
@@ -590,7 +623,8 @@ export class NorthstarApp {
     for (const i of imu) this.pipeline.setImu(i);
 
     // OSNMA protocol demo for Hist Lab / synthetic lab only (never LIVE-*)
-    if (scenario.osnmaFail || scenario.id === 'osnma_failure') {
+    const simOsnmaFail = this.injectionPolicyActive() && this.sim.scenario.id === 'osnma_failure';
+    if (!simOsnmaFail && (scenario.osnmaFail || scenario.id === 'osnma_failure')) {
       this.lastOsnmaResult = osnmaFixture('failed', simTimeIso);
     } else if (this.lastOsnmaResult) {
       // Keep ICD/sidecar result; refresh timestamp only
@@ -599,6 +633,7 @@ export class NorthstarApp {
       this.lastOsnmaResult = osnmaFixture('authenticated', simTimeIso);
     }
     this.attachOsnmaToLabFleet(aisA.map((e) => e.entity_id));
+    if (simOsnmaFail) this.pipeline.setOsnma(this.sim.scenario.targetId, osnmaFixture('failed', simTimeIso));
     // Re-bind full-stack RF/AoA each tick (only signed Lab entity)
     if (this.lastRfLabResult) {
       const fsId = this.fullstackEntityId();
@@ -622,14 +657,63 @@ export class NorthstarApp {
     }
   }
 
-  setScenario(id: ScenarioId, entityId?: string): void {
+  /** True when attacks must go to simulated ships only (Hist Lab without the legacy flag). */
+  injectionPolicyActive(): boolean {
+    return this.useHistoricalLab && !this.legacyLabInjection;
+  }
+
+  /** Simulated ships that may receive injected attacks in the current mode. */
+  simulatedShipIds(): string[] {
+    return this.useHistoricalLab ? [...this.labSimShipIds] : this.sim.vessels.map((v) => v.def.entity_id);
+  }
+
+  setScenario(
+    id: ScenarioId,
+    entityId?: string,
+  ): { target: string; retargeted_from?: string; policy: 'simulated_only' | 'legacy' } {
+    // Position/sensor/evidence injections. signed_tamper / signed_replay attack the
+    // simulated device channel (envelopes from device-sim), not the recorded AIS data.
+    const INJECTIONS: ScenarioId[] = [
+      'sudden_spoof', 'gradual_drift', 'ais_disagreement', 'gnss_jamming', 'imu_disagreement',
+      'stale_clock_skew', 'osnma_failure', 'rf_aoa_spoof_cluster',
+    ];
+    if (this.injectionPolicyActive() && INJECTIONS.includes(id)) {
+      const sims = this.simulatedShipIds();
+      const requested = entityId ?? this.selectedEntityId ?? undefined;
+      const target = requested && sims.includes(requested) ? requested : (sims[0] ?? 'VESSEL-001');
+      const retargeted = requested && requested !== target ? requested : undefined;
+      this.lab.setScenario('normal');
+      this.sim.setScenario(id, target);
+      if (this.lastSimRfTarget) this.pipeline.setRfLab(this.lastSimRfTarget, null);
+      this.lastSimRfTarget = null;
+      if (id === 'rf_aoa_spoof_cluster') {
+        const spoof = this.readRfResult('spoof');
+        if (spoof) {
+          this.pipeline.setRfLab(target, { ...spoof, entity_id: target, observed_at: spoof.observed_at ?? new Date().toISOString() });
+          this.lastSimRfTarget = target;
+        }
+      }
+      this.audit.append('scenario_set', {
+        scenario: id,
+        entity_id: target,
+        policy: 'simulated_only',
+        ...(retargeted ? { retargeted_from: retargeted } : {}),
+      });
+      this.broadcast({ type: 'snapshot', payload: this.snapshot() });
+      return { target, ...(retargeted ? { retargeted_from: retargeted } : {}), policy: 'simulated_only' };
+    }
+    if (this.injectionPolicyActive()) {
+      this.sim.setScenario(id === 'reset' ? 'reset' : 'normal');
+      if (this.lastSimRfTarget) this.pipeline.setRfLab(this.lastSimRfTarget, null);
+      this.lastSimRfTarget = null;
+    }
     const target =
       entityId ??
       this.lab.signedEntityId ??
       this.selectedEntityId ??
       'VESSEL-001';
     if (this.useHistoricalLab) this.lab.setScenario(id, target);
-    this.sim.setScenario(id, target);
+    if (!this.injectionPolicyActive()) this.sim.setScenario(id, target);
     const at = new Date(this.activeScenario().simTimeMs).toISOString();
     if (id === 'reset') {
       this.pipeline.reset();
@@ -663,6 +747,19 @@ export class NorthstarApp {
       this.audit.append('scenario_set', { scenario: id, entity_id: target });
     }
     this.broadcast({ type: 'snapshot', payload: this.snapshot() });
+    return { target, policy: this.injectionPolicyActive() ? 'simulated_only' : 'legacy' };
+  }
+
+  private lastSimRfTarget: string | null = null;
+
+  private readRfResult(kind: 'nominal' | 'spoof'): RfLabResult | null {
+    const path = join(REPO_ROOT, 'data/rf/results', kind === 'spoof' ? 'capture01_spoof_cluster.json' : 'capture01_nominal.json');
+    if (!existsSync(path)) return null;
+    try {
+      return JSON.parse(readFileSync(path, 'utf8')) as RfLabResult;
+    } catch {
+      return null;
+    }
   }
 
   /** Bind Manavi dual-ant AoA JSON to full-stack Lab entity only — never LIVE-*. */

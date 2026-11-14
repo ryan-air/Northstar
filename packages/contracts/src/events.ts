@@ -155,6 +155,12 @@ export const TrustAssessmentSchema = z.object({
    * evidence_coverage (above) is unchanged and still counts simulated/demo evidence.
    */
   verified_evidence_coverage: z.number().min(0).max(100).optional(),
+  /**
+   * 'non_vessel_transponder' for test units / base stations / AtoN (label only; checks,
+   * trust and alerts are unchanged). Absent on older assessments.
+   */
+  transponder_kind: z.enum(['vessel', 'non_vessel_transponder']).optional(),
+  transponder_kind_reasons: z.array(z.string()).optional(),
   coverage_band: z.enum(['high', 'medium', 'low']),
   available_checks: z.number().int().nonnegative(),
   expected_checks: z.number().int().nonnegative(),

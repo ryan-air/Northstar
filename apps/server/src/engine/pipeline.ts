@@ -19,6 +19,10 @@ import {
   checkIdentity,
   createIdentityState,
   stampEvidenceClass,
+  createTransponderKindState,
+  updateTransponderKind,
+  type TransponderKind,
+  type TransponderKindState,
   type FleetDisplacement,
   type IdentityConfig,
   type IdentityState,
@@ -68,7 +72,9 @@ interface EntityRuntime {
   /** Ring buffer of recent AIS events (oldest first). */
   aisHistory: PositionEvent[];
   identityState: IdentityState;
+  transponderState: TransponderKindState;
   lastIdentity?: CheckResult;
+  transponderKind?: { kind: TransponderKind; reasons: string[] };
   lastEvent?: PositionEvent;
   previousEvent?: PositionEvent;
   lastAisEvent?: PositionEvent;
@@ -340,6 +346,21 @@ export class TrustPipeline {
       observationTs: kinEvent.source_timestamp,
     });
     rt.hardState = fused.hardState;
+    if (srcKey !== 'device_telemetry') {
+      const tk = updateTransponderKind(
+        rt.transponderState,
+        event,
+        this.geo.land.query(event.position.lon, event.position.lat).onLand,
+      );
+      rt.transponderState = tk.state;
+      rt.transponderKind = { kind: tk.kind, reasons: tk.reasons };
+    }
+    fused.assessment = {
+      ...fused.assessment,
+      ...(rt.transponderKind
+        ? { transponder_kind: rt.transponderKind.kind, transponder_kind_reasons: rt.transponderKind.reasons }
+        : {}),
+    };
     rt.trust = fused.assessment;
 
     const anomalous =
@@ -523,6 +544,7 @@ export class TrustPipeline {
         sources: new Map(),
         aisHistory: [],
         identityState: createIdentityState(),
+        transponderState: createTransponderKindState(),
         kinState: { cusum: 0 },
         hardState: createHardAlertState(),
         dr: null,
