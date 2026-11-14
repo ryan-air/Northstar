@@ -185,15 +185,14 @@ export function MapView() {
           id: 'land-fill',
           type: 'fill',
           source: 'land',
-          paint: { 'fill-color': '#1b2730', 'fill-opacity': 1, 'fill-antialias': false },
+          paint: { 'fill-color': '#1b2730', 'fill-opacity': 0.9 },
         });
         addLayerOnce({
           id: 'land-line',
           type: 'line',
           source: 'land',
-          // The coastline GeoJSON is cut into 0.1° tiles; outlining each piece drew a grid over the
-          // map. The land/water contrast shows the coast, so the outline is off.
-          paint: { 'line-color': '#34454f', 'line-width': 0.8, 'line-opacity': 0 },
+          // The coastline GeoJSON is cut into 0.1° tiles; the faint outline doubles as a chart grid.
+          paint: { 'line-color': '#2f4654', 'line-width': 0.7, 'line-opacity': 0.75 },
         });
         addLayerOnce({
           id: 'ports-fill',

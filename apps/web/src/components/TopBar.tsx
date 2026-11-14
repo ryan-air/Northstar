@@ -23,7 +23,7 @@ export function TopBar() {
           <div className="brand-mark">NORTHSTAR</div>
           <div className="brand-sub">Integrity</div>
         </div>
-        <div className="mode-badge">{snapshot ? 'SIMULATION' : 'CONNECTING'}</div>
+        {!snapshot && <div className="mode-badge">CONNECTING</div>}
       </div>
 
       {/* Center zone — anchored instruments */}

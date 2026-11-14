@@ -121,7 +121,7 @@ export function LeftPanel() {
         </div>
       )}
 
-      {labId && labEvents.length > 0 && (
+      {labId && labEvents.length > 0 && snapshot?.view_mode !== 'live' && (
         <div className="lab-events">
           <div className="panel-title">Lab vessel events{labVesselName ? ` · ${labVesselName}` : ''}</div>
           <div className="lab-events-note">Flagged by the vessel's own receiver / RF captures (recorded data).</div>
