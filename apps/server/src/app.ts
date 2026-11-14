@@ -9,21 +9,30 @@ import type {
   WsMessage,
 } from '@northstar/contracts';
 import {
+  IngestValidator,
   ReplayGuard,
   canonicalize,
   verifyEnvelope,
   type JsonValue,
 } from '@northstar/core';
 import { sha256 } from '@noble/hashes/sha256';
-import { existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { dirname } from 'node:path';
 import { join } from 'node:path';
 import {
   loadEnv,
   loadFusion,
   loadThresholds,
   REPO_ROOT,
+  runtimeDataDir,
   type EnvConfig,
+  type ThresholdsConfig,
 } from './config.js';
+import { configureReplayStore, EVAL_SNAPSHOT_PATH } from './replay/store.js';
+import { setAuditCheckpointPath, auditCheckpointsSettled } from './security/auditCheckpoint.js';
+import { setAuditLogPath } from './security/auditVerify.js';
+import { setOsnmaCachePaths } from './fixtures/loadFixtures.js';
 import type { RfLabResult } from '@northstar/contracts';
 import { loadGeo, type GeoData } from './geo/loadGeo.js';
 import { TrustPipeline } from './engine/pipeline.js';
@@ -52,6 +61,35 @@ export interface NorthstarAppOptions {
   dataDir?: string;
   /** Absolute path for persisted replay-guard state. */
   replayStatePath?: string;
+  /** JSONL the Hist Lab reads (tests pass the frozen eval snapshot, P0.2). */
+  replayPath?: string;
+}
+
+/** Seed files copied into the runtime data dir on first run (P1.5). Tracked files stay untouched. */
+const SEED_FILES: Array<[string, string]> = [
+  ['data/fixtures/devices.json', 'devices.json'],
+  ['data/fixtures/audit.jsonl', 'audit.jsonl'],
+  ['data/fixtures/audit.checkpoint.json', 'audit.checkpoint.json'],
+  ['data/fixtures/revocation.jsonl', 'revocation.jsonl'],
+  ['data/fixtures/revocation.jsonl.head.json', 'revocation.jsonl.head.json'],
+  ['data/fixtures/replay-guard.json', 'replay-guard.json'],
+  ['data/fixtures/osnma_icd_cache.json', 'osnma_icd_cache.json'],
+  ['data/replay/gof_ais.jsonl', 'replay/gof_ais.jsonl'],
+  ['data/replay/manifest.json', 'replay/manifest.json'],
+];
+
+export function seedRuntimeDataDir(dir: string): string[] {
+  const copied: string[] = [];
+  mkdirSync(join(dir, 'replay'), { recursive: true });
+  for (const [src, dst] of SEED_FILES) {
+    const from = join(REPO_ROOT, src);
+    const to = join(dir, dst);
+    if (!existsSync(to) && existsSync(from)) {
+      copyFileSync(from, to);
+      copied.push(dst);
+    }
+  }
+  return copied;
 }
 
 export class NorthstarApp {
@@ -90,16 +128,55 @@ export class NorthstarApp {
   /** Lab dual-ant IQ / AoA result bound only to full-stack Hist Lab entity. */
   private lastRfLabResult: RfLabResult | null = null;
 
+  readonly thresholds: ThresholdsConfig;
+  /** P1.4: Hist Lab ingest gate (now = replay clock). */
+  labValidator: IngestValidator;
+
   constructor(opts: NorthstarAppOptions = {}) {
     this.env = loadEnv();
-    this.geo = loadGeo();
     const fusion = loadFusion();
     const thresholds = loadThresholds();
-    this.dataDir = opts.dataDir ?? null;
+    this.thresholds = thresholds;
+    this.geo = loadGeo(thresholds.geographic);
+    // P1.5: mutable runtime state lives in NORTHSTAR_DATA_DIR (default .northstar/data).
+    const runtimeDir = opts.dataDir ?? runtimeDataDir();
+    if (!opts.dataDir && runtimeDir) {
+      const copied = seedRuntimeDataDir(runtimeDir);
+      if (copied.length > 0) console.log(`[northstar] seeded ${runtimeDir}: ${copied.join(', ')}`);
+    }
+    this.dataDir = runtimeDir;
+    if (runtimeDir) {
+      setAuditCheckpointPath(join(runtimeDir, 'audit.checkpoint.json'));
+      setAuditLogPath(join(runtimeDir, 'audit.jsonl'));
+      setOsnmaCachePaths([
+        join(runtimeDir, 'osnma_icd_cache.json'),
+        join(REPO_ROOT, 'data/fixtures/osnma_icd_cache.json'),
+      ]);
+    }
+    const runtimeReplay = runtimeDir ? join(runtimeDir, 'replay/gof_ais.jsonl') : null;
+    const readPath =
+      opts.replayPath ??
+      process.env.NORTHSTAR_REPLAY_PATH ??
+      (runtimeReplay && existsSync(runtimeReplay)
+        ? runtimeReplay
+        : opts.dataDir && existsSync(EVAL_SNAPSHOT_PATH)
+          ? EVAL_SNAPSHOT_PATH
+          : undefined);
+    configureReplayStore({
+      ...(readPath ? { read: readPath } : {}),
+      ...(runtimeReplay && !opts.dataDir
+        ? { append: runtimeReplay, manifest: join(runtimeDir!, 'replay/manifest.json') }
+        : {}),
+    });
+    const v = thresholds.validation;
+    this.labValidator = new IngestValidator({
+      staleAfterMs: (v?.lab_stale_after_s ?? 120) * 1000,
+      maxFutureSkewMs: (v?.max_future_skew_s ?? 30) * 1000,
+    });
     this.replayStatePath =
       opts.replayStatePath ??
-      (opts.dataDir
-        ? join(opts.dataDir, 'replay-guard.json')
+      (this.dataDir
+        ? join(this.dataDir, 'replay-guard.json')
         : join(REPO_ROOT, 'data/fixtures/replay-guard.json'));
     this.pipeline = new TrustPipeline(fusion, thresholds, this.geo);
     this.live = new LiveFeedService(
@@ -211,6 +288,14 @@ export class NorthstarApp {
 
     this.live.setOnUpdate(() => {
       this.broadcast({ type: 'snapshot', payload: this.snapshot() });
+    });
+    this.live.setOnReject((r) => {
+      this.forensics.push(
+        'ingest_rejected',
+        `Ingest rejected (${r.feed}): ${r.code} — ${r.reason}`,
+        { feed: r.feed, code: r.code, entity_id: r.entity_id },
+        'warning',
+      );
     });
     this.audit.append('lab_source', {
       historical: hist.ok,
@@ -465,10 +550,40 @@ export class NorthstarApp {
     };
   }
 
+  /** Hist Lab rejections by code (P1.4 / P3.5). */
+  labRejections(): Record<string, number> {
+    return { ...this.labValidator.rejected };
+  }
+
   tick(): void {
     const batch = this.useHistoricalLab ? this.lab.tick(1) : this.sim.tick(1);
-    const { aisA, aisB, imu, gnss, simTimeIso } = batch;
+    const { aisB, imu, gnss, simTimeIso } = batch;
     const scenario = this.activeScenario();
+    if ('wrapped' in batch && batch.wrapped) {
+      // P3.3: timeline looped — clear Lab entities and hard-alert state so the jump
+      // back to the start is not scored as a teleport.
+      for (const v of this.lab.vessels) this.pipeline.removeEntity(v.track.entity_id);
+      this.labValidator.reset();
+      this.attachOsnmaToLabFleet();
+      void this.seedAttestation();
+      this.audit.append('lab_timeline_wrapped', { wraps: this.lab.wraps });
+    }
+    // P1.4: validate every Lab event against the replay clock; rejects go to forensics only.
+    const nowDate = new Date(simTimeIso);
+    const aisA: typeof batch.aisA = [];
+    for (const e of batch.aisA) {
+      const out = this.labValidator.validate(e, nowDate);
+      if (out.ok) {
+        aisA.push(out.event);
+      } else {
+        this.forensics.push(
+          'ingest_rejected',
+          `Lab ingest rejected: ${out.code} — ${out.reason}`,
+          { feed: 'hist_lab', code: out.code, entity_id: e.entity_id },
+          'warning',
+        );
+      }
+    }
 
     for (const e of aisB) this.pipeline.ingestSecondary(e);
     for (const g of gnss) this.pipeline.setGnss(g);
@@ -518,6 +633,7 @@ export class NorthstarApp {
     const at = new Date(this.activeScenario().simTimeMs).toISOString();
     if (id === 'reset') {
       this.pipeline.reset();
+      this.labValidator.reset();
       // Preserve sequence counters across scenario reset (persistPath); only clear hash cache.
       this.replay.reset(undefined, { clearSequences: false });
       this.lastOsnmaResult =
@@ -675,13 +791,40 @@ export class NorthstarApp {
       return { ok: false, reason: challengePeek.reason };
     }
 
+    // P4.3: the algorithm is bound to the enrolment. An envelope claiming a different
+    // algorithm is rejected; assurance_level comes from the registry only (the
+    // envelope's claim is logged, never trusted).
+    const enrolledAlg = (device.signature_alg ?? 'ed25519') as SignedTelemetryEnvelope['signature_alg'];
+    if (envelope.signature_alg && envelope.signature_alg !== enrolledAlg) {
+      this.audit.append('signature_alg_mismatch', {
+        device_id: device.device_id,
+        envelope_alg: envelope.signature_alg,
+        enrolled_alg: enrolledAlg,
+      });
+      const ev = this.forensics.push(
+        'signature_failed',
+        `Rejected telemetry — signature_alg ${envelope.signature_alg} ≠ enrolled ${enrolledAlg}`,
+        {
+          device_id: device.device_id,
+          entity_id: device.entity_id,
+          envelope_alg: envelope.signature_alg,
+          enrolled_alg: enrolledAlg,
+        },
+        'critical',
+      );
+      return { ok: false, reason: 'signature_alg_mismatch', forensics_id: ev.id };
+    }
+    if (envelope.assurance_level && envelope.assurance_level !== device.assurance_level) {
+      this.audit.append('assurance_claim_ignored', {
+        device_id: device.device_id,
+        claimed: envelope.assurance_level,
+        enrolled: device.assurance_level,
+      });
+    }
     const envelopeWithAlg: SignedTelemetryEnvelope = {
       ...envelope,
-      signature_alg:
-        envelope.signature_alg ??
-        (device.signature_alg as SignedTelemetryEnvelope['signature_alg']) ??
-        'ed25519',
-      assurance_level: envelope.assurance_level ?? device.assurance_level ?? 'software',
+      signature_alg: enrolledAlg,
+      assurance_level: device.assurance_level ?? 'software',
     };
     const verified = await verifyEnvelope(envelopeWithAlg, pk);
     if (!verified.ok) {
@@ -813,6 +956,10 @@ export class NorthstarApp {
       provider_id: 'device_gateway',
       device_id: verified.payload.device_id,
       source_timestamp: verified.payload.timestamp,
+      // P3.2: the time the position refers to (replay clock) — used for kinematics/alignment.
+      ...(verified.payload.observation_time
+        ? { observation_time: verified.payload.observation_time }
+        : {}),
       ingested_at: nowIso,
       sequence_number: verified.payload.sequence_number,
       device_signature_status: 'verified' as const,
@@ -983,6 +1130,136 @@ export class NorthstarApp {
       timeline: this.pipeline.getTimeline(),
       selected_entity_id: this.selectedEntityId,
     };
+  }
+
+  private enrolTokenValue: string | null = null;
+
+  /** Path of the enrolment token (P4.1). Generated on first use; device-sim reads it. */
+  enrolTokenPath(): string {
+    return (
+      process.env.NORTHSTAR_ENROL_TOKEN_PATH ??
+      (this.dataDir ? join(this.dataDir, 'enrol.token') : join(REPO_ROOT, '.northstar/enrol.token'))
+    );
+  }
+
+  enrolToken(): string {
+    if (this.enrolTokenValue) return this.enrolTokenValue;
+    const p = this.enrolTokenPath();
+    if (existsSync(p)) {
+      this.enrolTokenValue = readFileSync(p, 'utf8').trim();
+    } else {
+      this.enrolTokenValue = randomBytes(24).toString('base64url');
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, this.enrolTokenValue + '\n');
+      try {
+        chmodSync(p, 0o600);
+      } catch {
+        /* best effort */
+      }
+    }
+    return this.enrolTokenValue;
+  }
+
+  private tokenMatches(candidate: string | undefined): boolean {
+    if (!candidate) return false;
+    const a = Buffer.from(candidate);
+    const b = Buffer.from(this.enrolToken());
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
+  /**
+   * P4.1 enrolment policy. Requires the admin bearer OR the enrolment token, and refuses
+   * to add a second active device to a vessel unless an admin sends replace: true.
+   */
+  async enrolDevice(
+    body: { device_id?: string; entity_id?: string; public_key_b64?: string; replace?: boolean },
+    auth: { admin: boolean; enrolToken?: string },
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    if (!auth.admin && !this.tokenMatches(auth.enrolToken)) {
+      this.forensics.push(
+        'enrolment_rejected',
+        'Enrolment rejected — no admin bearer or valid X-Northstar-Enrol-Token',
+        { device_id: body?.device_id, entity_id: body?.entity_id },
+        'critical',
+      );
+      this.audit.append('enrolment_rejected', { reason: 'unauthenticated', device_id: body?.device_id });
+      return { status: 401, body: { error: 'enrolment_authorization_required' } };
+    }
+    if (!body?.device_id || !body.entity_id || !body.public_key_b64) {
+      return { status: 400, body: { error: 'device_id, entity_id and public_key_b64 are required' } };
+    }
+    const existing = this.registry.get(body.device_id);
+    if (existing) {
+      if (existing.entity_id !== body.entity_id || existing.public_key !== body.public_key_b64) {
+        return {
+          status: 409,
+          body: {
+            error: 'device_already_enrolled',
+            detail:
+              'Local device key/entity does not match the enrolled record. Clear the runtime devices.json (NORTHSTAR_DATA_DIR) or enrol a new device_id — do not share .northstar/ keys across machines.',
+            enrolled: { device_id: existing.device_id, entity_id: existing.entity_id, key_id: existing.key_id },
+          },
+        };
+      }
+      return { status: 200, body: { ok: true, enrollment: existing, existing: true } };
+    }
+    const others = this.registry.activeForEntity(body.entity_id);
+    if (others.length > 0 && !(auth.admin && body.replace === true)) {
+      this.forensics.push(
+        'enrolment_rejected',
+        `Enrolment rejected — ${body.entity_id} already has an active device (${others.map((d) => d.device_id).join(', ')})`,
+        { device_id: body.device_id, entity_id: body.entity_id },
+        'critical',
+      );
+      this.audit.append('enrolment_rejected', {
+        reason: 'entity_has_active_device',
+        device_id: body.device_id,
+        entity_id: body.entity_id,
+      });
+      return {
+        status: 409,
+        body: {
+          error: 'entity_has_active_device',
+          detail: 'Revoke the existing device or have an admin re-enrol with replace: true.',
+        },
+      };
+    }
+    if (others.length > 0) {
+      for (const d of others) await this.revokeDevice(d.device_id);
+    }
+    const { enrollment } = await this.registry.enroll({
+      device_id: body.device_id,
+      entity_id: body.entity_id,
+      public_key_b64: body.public_key_b64,
+    });
+    this.audit.append('device_enrolled', {
+      device_id: enrollment.device_id,
+      entity_id: enrollment.entity_id,
+      key_id: enrollment.key_id,
+      private_key_issued: false,
+      replaced: others.map((d) => d.device_id),
+    });
+    return { status: 200, body: { ok: true, enrollment, existing: false } };
+  }
+
+  /** P3.2: replay clock shared with the device-sim. */
+  labClock(): { ready: boolean; sim_time: string; speed: number; timeline: string; entity_id: string | null } {
+    return {
+      ready: this.useHistoricalLab,
+      sim_time: new Date(this.activeScenario().simTimeMs).toISOString(),
+      speed: this.useHistoricalLab ? this.lab.speed : 1,
+      timeline: this.useHistoricalLab
+        ? this.lab.legacyPlayhead
+          ? 'legacy_per_vessel_playhead'
+          : 'shared_absolute_clock'
+        : 'synthetic',
+      entity_id: this.fullstackEntityId(),
+    };
+  }
+
+  /** P4.4: wait for queued audit checkpoint writes. */
+  async auditSettled(): Promise<void> {
+    await auditCheckpointsSettled();
   }
 
   getOsnmaDemoStatus() {

@@ -1,0 +1,24 @@
+{
+  "note": "P5.3 CI gates on the held-out split of eval-v1 with v2 configs (harness --n 10 --seed 7, deterministic). suspicious_or_worse is set just above today's 13.4% because the OSM coastline (P2.1) is not installed yet; tighten to ≤2% once it is.",
+  "config": "v2",
+  "split": "test",
+  "max": {
+    "suspicious_or_worse_pct": 15,
+    "flag_rate_per_check_pct.kinematics.warning_or_worse": 2.0,
+    "flag_rate_per_check_pct.identity.warning_or_worse": 0.5,
+    "vessels_ever_critical_while_stationary": 30
+  },
+  "min_recall_pct": {
+    "teleport_inland": 100,
+    "teleport_open_sea": 80,
+    "step_offset_300m": 80,
+    "drift_2mps": 80,
+    "area_pull": 90,
+    "coherent_area_offset": 90,
+    "self_replay_1h": 80,
+    "mmsi_clone": 80,
+    "stale_timestamp": 100,
+    "future_timestamp": 100,
+    "duplicates": 100
+  }
+}

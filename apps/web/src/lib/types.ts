@@ -32,6 +32,8 @@ export interface CheckResult {
   missing_reason: string | null;
   evidence?: Record<string, unknown>;
   hard_alert: boolean;
+  /** live | recorded | simulated | demo (P0.5) */
+  evidence_class?: 'live' | 'recorded' | 'simulated' | 'demo';
 }
 
 export interface TrustAssessment {
@@ -39,6 +41,8 @@ export interface TrustAssessment {
   trust_score: number;
   trust_band: TrustBand;
   evidence_coverage: number;
+  /** Coverage from live/recorded evidence only (P0.6). */
+  verified_evidence_coverage?: number;
   coverage_band: string;
   available_checks: number;
   expected_checks: number;

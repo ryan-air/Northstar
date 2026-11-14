@@ -10,6 +10,7 @@ Northstar’s claimed value:
 1. **Explainable position-integrity estimate** (trust score + evidence coverage + per-layer reasons).
 2. **Cryptographic provenance** for onboard telemetry (Ed25519 sign / tamper / replay demos).
 3. **Fusion of independent weak signals** (kinematics, geography, neighbors, optional OSNMA/IMU/GNSS diagnostics) without pretending any single check is proof.
+   > **Superseded (2026-11-14):** in fusion v1 the noisy-OR term never exceeded the strongest single anomaly, so v1 was effectively `max()` — weak signals did not combine. Fusion v2 (`config/fusion.v2.json`, default) does combine them; see [EVALUATION.md](EVALUATION.md) and `packages/core/src/fusion/fuse.v2.test.ts`. Most "independent" signals in the Lab are also not independent (see EVALUATION.md → evidence classes).
 
 What we do **not** claim: calibrated probability of authenticity; certified navigation; RF-front-end anti-spoof equal to Septentrio-class receivers.
 

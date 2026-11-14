@@ -1,21 +1,36 @@
 /**
- * False-positive / false-negative metrics on recorded Digitraffic AIS.
+ * False-positive / false-negative metrics on recorded Digitraffic AIS (kinematics only).
  * Writes data/fixtures/eval_metrics.json
  *
- *   npx tsx scripts/eval-real-ais.ts
+ *   npx tsx scripts/eval-real-ais.ts [--thresholds v1|v2] [--src <jsonl>]
+ *
+ * P5.1: now deduplicates on (MMSI, AIS timestamp), reads thresholds from config
+ * (default v2), and reports `fail` and `warning-or-worse` separately. The original
+ * fields (confusion / false_positive_rate / false_negative_rate — fail-or-hard only)
+ * are kept with the same meaning. For full-pipeline numbers use npm run eval:pipeline.
  */
 import { createReadStream, writeFileSync, mkdirSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkKinematics, type KinematicsState } from '../packages/core/src/checks/kinematics.js';
+import { checkKinematics, type KinematicsConfig, type KinematicsState } from '../packages/core/src/checks/kinematics.js';
+import { loadThresholds } from '../apps/server/src/config.js';
 import type { PositionEvent } from '../packages/contracts/src/events.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const REPLAY = join(ROOT, 'data/replay/gof_ais.jsonl');
+const argv = process.argv.slice(2);
+const arg = (k: string, d: string) => (argv.includes(k) ? argv[argv.indexOf(k) + 1]! : d);
+// Default: the frozen eval snapshot (P0.2), never the growing live recording.
+const REPLAY = join(ROOT, arg('--src', 'data/replay/snapshots/gof_ais.eval-v1.jsonl'));
 const OUT = join(ROOT, 'data/fixtures/eval_metrics.json');
+const THRESHOLDS = loadThresholds(arg('--thresholds', 'v2'));
+const kinConfig: KinematicsConfig = {
+  ...(THRESHOLDS.kinematics as KinematicsConfig),
+  vessel_class_limits: THRESHOLDS.vessel_class_limits as KinematicsConfig['vessel_class_limits'],
+};
 
-const kinConfig = {
+/** Hard-coded config used before P5.1 — kept for reference only, no longer read. */
+export const LEGACY_KIN_CONFIG = {
   min_dt_s: 0.5,
   max_dt_s: 120,
   uncertain_dt_skip: true,
@@ -65,6 +80,8 @@ async function main() {
   const byMmsi = new Map<number, Array<ReturnType<typeof Object.assign>>>();
   const rl = createInterface({ input: createReadStream(REPLAY), crlfDelay: Infinity });
   let n = 0;
+  let dupDropped = 0;
+  const seen = new Set<string>();
   for await (const line of rl) {
     if (!line.trim()) continue;
     try {
@@ -78,13 +95,16 @@ async function main() {
         timestamp_external_ms?: number;
       };
       if (!Number.isFinite(s.mmsi) || !Number.isFinite(s.lat)) continue;
-      const arr = byMmsi.get(s.mmsi) ?? [];
-      if (arr.length < 40) {
-        arr.push(s);
-        byMmsi.set(s.mmsi, arr);
+      const key = `${s.mmsi}:${s.timestamp_external_ms ?? `cap:${s.captured_at}`}`;
+      if (seen.has(key)) {
+        dupDropped += 1;
+        continue;
       }
+      seen.add(key);
+      const arr = byMmsi.get(s.mmsi) ?? [];
+      arr.push(s);
+      byMmsi.set(s.mmsi, arr);
       n += 1;
-      if (n > 80_000) break;
     } catch {
       /* skip */
     }
@@ -94,9 +114,15 @@ async function main() {
   let fp = 0;
   let tn = 0;
   let fn = 0;
+  let warnOrWorse = 0;
+  let warnOnly = 0;
+  let failOnly = 0;
 
-  for (const [mmsi, samples] of byMmsi) {
-    if (samples.length < 5) continue;
+  for (const [mmsi, unsorted] of byMmsi) {
+    if (unsorted.length < 5) continue;
+    const t = (x: { timestamp_external_ms?: number; captured_at?: string }) =>
+      x.timestamp_external_ms ?? Date.parse(x.captured_at ?? '');
+    const samples = [...unsorted].sort((a, b) => t(a) - t(b));
     let state: KinematicsState = { cusum: 0 };
     let prev: PositionEvent | null = null;
     for (let i = 0; i < samples.length; i++) {
@@ -113,6 +139,9 @@ async function main() {
       // Nominal samples are negatives
       if (flagged) fp += 1;
       else tn += 1;
+      if (result.status === 'warning') warnOnly += 1;
+      if (result.status === 'fail') failOnly += 1;
+      if (result.status === 'warning' || result.status === 'fail') warnOrWorse += 1;
       prev = cur;
     }
 
@@ -137,10 +166,22 @@ async function main() {
     else fn += 1;
   }
 
+  const nominal = fp + tn;
   const metrics = {
     generated_at: new Date().toISOString(),
-    source: 'data/replay/gof_ais.jsonl',
+    source: REPLAY.replace(ROOT + '/', ''),
+    thresholds_version: THRESHOLDS.version,
+    rows_used: n,
+    duplicate_rows_dropped: dupDropped,
     vessels_sampled: byMmsi.size,
+    nominal_events: nominal,
+    kinematics_rate_pct: {
+      warning: nominal ? Math.round((1000 * warnOnly) / nominal) / 10 : null,
+      fail: nominal ? Math.round((1000 * failOnly) / nominal) / 10 : null,
+      warning_or_worse: nominal ? Math.round((1000 * warnOrWorse) / nominal) / 10 : null,
+    },
+    superseded_note:
+      'Pre-P5.1 runs (FPR 0.29%) counted only fail/hard on the first 40 raw rows per vessel with duplicates and a hard-coded config; warnings were not counted. See EVALUATION.md.',
     confusion: { tp, fp, tn, fn },
     false_positive_rate: fp + tn > 0 ? fp / (fp + tn) : null,
     false_negative_rate: tp + fn > 0 ? fn / (tp + fn) : null,

@@ -13,7 +13,9 @@ export type SecurityEventKind =
   | 'osnma_failed'
   | 'audit_tamper_detected'
   | 'challenge_issued'
-  | 'challenge_rejected';
+  | 'challenge_rejected'
+  | 'ingest_rejected'
+  | 'enrolment_rejected';
 
 export interface SecurityEvent {
   id: string;

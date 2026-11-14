@@ -7,6 +7,27 @@ export interface GeoConfig {
   port_buffer_m: number;
   warning_inland_m: number;
   fail_inland_m: number;
+  /** v2: 'edge' uses true point-to-segment shore distance (default 'vertex' = v1). */
+  distance_mode?: 'vertex' | 'edge';
+  /**
+   * v2: shoreline tolerance = position accuracy + antenna-to-hull offset from AIS
+   * reference points A–D. navStat is NOT used as an exemption (vessel-controlled).
+   */
+  use_hull_tolerance?: boolean;
+  /** v2: hull offset assumed when reference points are unknown (recorded in evidence). */
+  default_hull_offset_m?: number;
+  /** v2: accuracy assumed when the report carries none (v1 hard-codes 50). */
+  default_accuracy_m?: number;
+}
+
+/** Max distance from the AIS antenna to any hull extreme, from reference points A–D. */
+export function hullOffsetM(event: PositionEvent): number | null {
+  const d = event.dimensions_m;
+  if (!d) return null;
+  const along = Math.max(d.a, d.b);
+  const across = Math.max(d.c, d.d);
+  if (along + across <= 0) return null;
+  return Math.hypot(along, across);
 }
 
 export interface GeoContext {
@@ -22,8 +43,8 @@ export function checkGeographic(
   nowIso: string,
 ): CheckResult {
   const { lon, lat } = event.position;
-  const accuracy = event.quality.position_accuracy_m ?? 50;
-  const landHit = ctx.land.query(lon, lat);
+  const accuracy = event.quality.position_accuracy_m ?? config.default_accuracy_m ?? 50;
+  const landHit = ctx.land.query(lon, lat, { distance: config.distance_mode ?? 'vertex' });
 
   const evidence: Record<string, unknown> = {
     on_land: landHit.onLand,
@@ -31,6 +52,17 @@ export function checkGeographic(
     accuracy_m: accuracy,
     land_feature: landHit.featureId,
   };
+  let tolerance = accuracy;
+  if (config.use_hull_tolerance) {
+    const hull = hullOffsetM(event);
+    const hullUsed = hull ?? config.default_hull_offset_m ?? 0;
+    tolerance = accuracy + hullUsed;
+    evidence.hull_offset_m = hullUsed;
+    evidence.hull_offset_source = hull != null ? 'ais_reference_points' : 'assumed_default';
+    evidence.shore_tolerance_m = tolerance;
+    evidence.distance_mode = config.distance_mode ?? 'vertex';
+    if (landHit.shoreDistM != null) evidence.shore_distance_m = landHit.shoreDistM;
+  }
 
   // Restricted / impossible regions
   for (const zone of ctx.restricted) {
@@ -104,6 +136,25 @@ export function checkGeographic(
     };
   }
 
+  if (config.use_hull_tolerance && depth <= tolerance) {
+    return {
+      entity_id: event.entity_id,
+      check_id: 'geographic',
+      status: 'pass',
+      anomaly_score: 0,
+      severity: 'none',
+      observed_at: nowIso,
+      explanation: `Position overlaps the coastline polygon by ~${depth.toFixed(0)} m, within the accuracy + hull tolerance (${tolerance.toFixed(0)} m); consistent with a vessel alongside.`,
+      source_ids: [event.source, 'geo_land'],
+      quality: 0.8,
+      freshness: 1,
+      reliability: 0.8,
+      missing_reason: null,
+      evidence,
+      hard_alert: false,
+    };
+  }
+
   // Grade by inland depth vs accuracy
   if (depth > config.fail_inland_m && accuracy <= 100) {
     return {
@@ -124,7 +175,7 @@ export function checkGeographic(
     };
   }
 
-  if (depth > config.warning_inland_m || depth > accuracy) {
+  if (depth > config.warning_inland_m || depth > tolerance) {
     return {
       entity_id: event.entity_id,
       check_id: 'geographic',

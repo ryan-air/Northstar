@@ -113,6 +113,12 @@ export function RightPanel() {
                   {vessel.trust.evidence_coverage.toFixed(0)}% · {vessel.trust.available_checks}/
                   {vessel.trust.expected_checks}
                 </div>
+                <div className="k">Verified cov.</div>
+                <div className="v" title="Counts only live or recorded evidence (no simulated/demo checks)">
+                  {vessel.trust.verified_evidence_coverage != null
+                    ? `${vessel.trust.verified_evidence_coverage.toFixed(0)}%`
+                    : '—'}
+                </div>
                 <div className="k">Position</div>
                 <div className="v">
                   {vessel.position.lat.toFixed(5)} N, {vessel.position.lon.toFixed(5)} E
@@ -172,6 +178,7 @@ export function RightPanel() {
                 </div>
                 <div className="muted" style={{ fontSize: 10, marginBottom: 4 }}>
                   mode: {mode}
+                  {c.evidence_class ? ` · evidence: ${c.evidence_class}` : ''}
                   {dataBadge ? (
                     <>
                       {' · '}

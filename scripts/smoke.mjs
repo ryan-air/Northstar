@@ -2,6 +2,12 @@
  * API smoke check — start the server first (`npm run dev -w @northstar/server`).
  */
 const base = process.env.NORTHSTAR_URL ?? 'http://127.0.0.1:8080';
+// P4.5: /api/scenario is admin-gated — send the bearer (demo default matches the server).
+const adminToken = process.env.NORTHSTAR_ADMIN_TOKEN ?? 'northstar-demo-admin';
+const adminHeaders = {
+  'content-type': 'application/json',
+  authorization: `Bearer ${adminToken}`,
+};
 
 async function main() {
   const health = await fetch(`${base}/api/health`).then((r) => r.json());
@@ -13,13 +19,13 @@ async function main() {
   if (!Array.isArray(snap.vessels)) throw new Error('no vessels array');
   const spoof = await fetch(`${base}/api/scenario`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: adminHeaders,
     body: JSON.stringify({ scenario: 'sudden_spoof', entity_id: 'VESSEL-001' }),
   }).then((r) => r.json());
-  if (!spoof.ok) throw new Error('scenario failed');
+  if (!spoof.ok) throw new Error(`scenario failed: ${JSON.stringify(spoof)}`);
   await fetch(`${base}/api/scenario`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: adminHeaders,
     body: JSON.stringify({ scenario: 'reset' }),
   });
   console.log(

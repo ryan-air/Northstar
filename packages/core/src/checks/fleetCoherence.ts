@@ -17,6 +17,13 @@ export interface FleetDisplacement {
   dist_m: number;
   d_lat: number;
   d_lon: number;
+  /** v2 (optional): seconds between the two fixes. */
+  dt_s?: number;
+  /** v2 (optional): SOG/COG reported at the earlier fix — used to predict motion. */
+  from_sog_kn?: number | null;
+  from_cog_deg?: number | null;
+  /** v2 (optional): SOG reported at the later fix. */
+  to_sog_kn?: number | null;
 }
 
 export interface FleetCoherenceConfig {

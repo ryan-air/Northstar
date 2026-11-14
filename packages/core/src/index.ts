@@ -17,3 +17,6 @@ export * from './checks/rfLab.js';
 export * from './checks/signedVsAis.js';
 export * from './checks/fleetCoherence.js';
 export * from './fusion/fuse.js';
+export * from './fusion/evidenceClass.js';
+export * from './checks/fleetCoherenceV2.js';
+export * from './checks/identity.js';

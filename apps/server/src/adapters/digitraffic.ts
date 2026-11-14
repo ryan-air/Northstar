@@ -5,6 +5,7 @@
  * Live positions for Gulf of Finland / Finnish waters. Not a global AIS feed.
  */
 import type { PositionEvent, VesselClass } from '@northstar/contracts';
+import type { ReplayRecord } from '../replay/types.js';
 
 const BASE = 'https://meri.digitraffic.fi/api/ais/v1';
 const USER = 'Northstar/1.0 (hackathon integrity demo)';
@@ -20,6 +21,8 @@ export interface DigitrafficFeature {
     navStat: number;
     rot: number;
     heading: number;
+    posAcc?: boolean;
+    raim?: boolean;
     timestamp?: number;
     timestampExternal?: number;
   };
@@ -38,6 +41,12 @@ export interface DigitrafficVesselMeta {
   callSign?: string;
   imo?: number;
   destination?: string;
+  draught?: number;
+  posType?: number;
+  referencePointA?: number;
+  referencePointB?: number;
+  referencePointC?: number;
+  referencePointD?: number;
 }
 
 export interface DigitrafficPollResult {
@@ -46,6 +55,41 @@ export interface DigitrafficPollResult {
   updatedAt?: string;
   events: PositionEvent[];
   vesselCount: number;
+  /** Full-fidelity rows for the historical recorder (P1.1). */
+  records?: ReplayRecord[];
+}
+
+/**
+ * Decode the AIS ROT field (ROT_AIS, −128…127) to °/min.
+ * −128 = not available; ±127 = turning faster than 5°/30 s with no turn indicator
+ * (magnitude unknown) → null. NOTE: assumes Digitraffic passes the raw ROT_AIS value.
+ */
+export function decodeAisRot(rot: number | null | undefined): number | null {
+  if (typeof rot !== 'number' || !Number.isFinite(rot)) return null;
+  if (rot === -128 || Math.abs(rot) >= 127) return null;
+  const v = (rot / 4.733) ** 2;
+  return rot < 0 ? -v : v;
+}
+
+/** posAcc flag → nominal accuracy (m): true = DGNSS (≤10 m), false = autonomous (>10 m). */
+export function accuracyFromPosAcc(posAcc: boolean | null | undefined): number | null {
+  if (posAcc === true) return 10;
+  if (posAcc === false) return 50;
+  return null;
+}
+
+export function dimensionsFromMeta(
+  meta: DigitrafficVesselMeta | undefined,
+): { a: number; b: number; c: number; d: number } | null {
+  if (!meta) return null;
+  const { referencePointA: a, referencePointB: b, referencePointC: c, referencePointD: d } = meta;
+  if ([a, b, c, d].some((x) => typeof x !== 'number' || x < 0)) return null;
+  if ((a ?? 0) + (b ?? 0) + (c ?? 0) + (d ?? 0) === 0) return null;
+  return { a: a!, b: b!, c: c!, d: d! };
+}
+
+export function shipTypeToClassPublic(t?: number): VesselClass {
+  return shipTypeToClass(t);
 }
 
 function shipTypeToClass(t?: number): VesselClass {
@@ -137,6 +181,7 @@ export class DigitrafficAdapter {
       const body = (await res.json()) as DigitrafficLocations;
       const features = body.features ?? [];
       const events: PositionEvent[] = [];
+      const records: ReplayRecord[] = [];
 
       for (const f of features.slice(0, max)) {
         const [flon, flat] = f.geometry?.coordinates ?? [];
@@ -152,6 +197,10 @@ export class DigitrafficAdapter {
             ? new Date(tsMs).toISOString()
             : body.dataUpdatedTime ?? nowIso;
 
+        const p = f.properties ?? ({} as DigitrafficFeature['properties']);
+        const aisSecond =
+          typeof p.timestamp === 'number' && p.timestamp >= 0 && p.timestamp <= 59 ? p.timestamp : null;
+        const accuracy = accuracyFromPosAcc(p.posAcc);
         const event: PositionEvent = {
           schema_version: 1,
           entity_id: `LIVE-${mmsi}`,
@@ -177,9 +226,17 @@ export class DigitrafficAdapter {
           device_signature_status: 'missing',
           osnma_status: 'unavailable',
           quality: {
-            position_accuracy_m: f.properties?.navStat != null ? 50 : null,
+            // v1 used "navStat present → 50 m" (invented). Now derived from posAcc.
+            position_accuracy_m: accuracy,
             signal_quality_available: false,
           },
+          nav_status: typeof p.navStat === 'number' && p.navStat >= 0 && p.navStat <= 15 ? p.navStat : null,
+          rot_deg_min: decodeAisRot(p.rot),
+          rate_of_turn_deg_per_min: decodeAisRot(p.rot),
+          raim: typeof p.raim === 'boolean' ? p.raim : null,
+          ais_utc_second: aisSecond,
+          epfd_type: typeof meta?.posType === 'number' ? meta.posType : null,
+          dimensions_m: dimensionsFromMeta(meta),
           labels: {
             live: true,
             fixture: false,
@@ -187,9 +244,38 @@ export class DigitrafficAdapter {
             mmsi,
             call_sign: meta?.callSign,
             destination: meta?.destination,
+            imo: meta?.imo,
           },
         };
         events.push(event);
+        records.push({
+          mmsi,
+          lat: flat,
+          lon: flon,
+          sog: typeof p.sog === 'number' ? p.sog : null,
+          cog: typeof p.cog === 'number' ? p.cog : null,
+          heading: typeof p.heading === 'number' ? p.heading : null,
+          navStat: typeof p.navStat === 'number' ? p.navStat : null,
+          rot: typeof p.rot === 'number' ? p.rot : null,
+          posAcc: typeof p.posAcc === 'boolean' ? p.posAcc : null,
+          raim: typeof p.raim === 'boolean' ? p.raim : null,
+          ais_timestamp_s: typeof p.timestamp === 'number' ? p.timestamp : null,
+          timestamp_external_ms: typeof tsMs === 'number' && tsMs > 0 ? tsMs : null,
+          captured_at: nowIso,
+          source: 'digitraffic',
+          provider_id: 'digitraffic_historical',
+          name: meta?.name?.trim() || undefined,
+          shipType: meta?.shipType,
+          callSign: meta?.callSign,
+          imo: meta?.imo,
+          destination: meta?.destination,
+          draught: meta?.draught,
+          posType: meta?.posType,
+          referencePointA: meta?.referencePointA,
+          referencePointB: meta?.referencePointB,
+          referencePointC: meta?.referencePointC,
+          referencePointD: meta?.referencePointD,
+        });
       }
 
       this.status = events.length > 0 ? 'ok' : 'degraded';
@@ -201,6 +287,7 @@ export class DigitrafficAdapter {
         updatedAt: this.lastUpdated,
         events,
         vesselCount: events.length,
+        records,
       };
     } catch (e) {
       this.status = 'down';

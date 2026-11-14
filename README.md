@@ -79,12 +79,18 @@ See [THREAT_MODEL.md](THREAT_MODEL.md) for adversaries, controls, and known limi
 - Rejected / forged telemetry never updates vessel tracks (forensics only).
 - Devices are bound to a single `entity_id` and key; challenge nonces require a signed request.
 - Device-sim signs an independent onboard track, compared to AIS via `signed_vs_ais`.
+  > **Superseded:** the onboard track is a noisy copy of the vessel's own recorded AIS, not an independent receiver (U12). Its checks are labelled `evidence_class: simulated`, and `verified_evidence_coverage` excludes them. See [EVALUATION.md](EVALUATION.md).
+- Device enrolment requires the admin bearer or the enrol token (`NORTHSTAR_DATA_DIR/enrol.token`); one active device per vessel.
 - Admin routes require `Authorization: Bearer $NORTHSTAR_ADMIN_TOKEN` (demo default `northstar-demo-admin`).
 
 ```bash
 npm run attacker          # live probes (PASS = attack rejected)
-npm run eval:real         # FP/FN on recorded AIS → data/fixtures/eval_metrics.json
+npm run eval:real         # kinematics FP/FN on the frozen snapshot → data/fixtures/eval_metrics.json
+npm run eval:pipeline     # full pipeline + attack library → data/fixtures/eval_pipeline_metrics.json
+npm run eval:gates        # fail if FPR / recall cross config/eval_gates.json
 ```
+
+Configs: `NORTHSTAR_THRESHOLDS` / `NORTHSTAR_FUSION` = `v2` (default) or `v1`. Runtime state lives in `NORTHSTAR_DATA_DIR` (default `.northstar/data`, seeded from `data/` on first run). Measured numbers: [EVALUATION.md](EVALUATION.md).
 
 ## Documentation
 
@@ -93,6 +99,7 @@ npm run eval:real         # FP/FN on recorded AIS → data/fixtures/eval_metrics
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Module boundaries & data flow |
 | [SECURITY.md](SECURITY.md) | Threat model, keys, claims |
 | [TESTING.md](TESTING.md) | Scenarios & evaluation |
+| [EVALUATION.md](EVALUATION.md) | Measured FPR / recall from the frozen dataset (source of truth for numbers) |
 | [DECISIONS.md](DECISIONS.md) | Confirmed choices |
 | [BLOCKERS.md](BLOCKERS.md) | Missing hardware / credentials |
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Phase status |

@@ -181,7 +181,8 @@ export function LeftPanel() {
         <div style={{ marginTop: 8 }} className="muted">
           Evidence coverage {vessel?.trust.evidence_coverage?.toFixed(0) ?? 0}% (
           {vessel?.trust.coverage_band ?? '—'}) · {vessel?.trust.available_checks ?? 0}/
-          {vessel?.trust.expected_checks ?? 0} checks
+          {vessel?.trust.expected_checks ?? 0} checks · verified (live/recorded only){' '}
+          {vessel?.trust.verified_evidence_coverage?.toFixed(0) ?? '—'}%
         </div>
         <div className="coverage-bar">
           <span style={{ width: `${vessel?.trust.evidence_coverage ?? 0}%` }} />

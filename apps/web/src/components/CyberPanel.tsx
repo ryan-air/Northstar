@@ -165,9 +165,15 @@ export function CyberPanel() {
           disabled={!!busy}
           onClick={() =>
             void run('OSNMA ICD verify', async () => {
+              const adminToken =
+                (import.meta as { env?: Record<string, string> }).env
+                  ?.VITE_NORTHSTAR_ADMIN_TOKEN ?? 'northstar-demo-admin';
               const r = await fetch('/api/osnma/verify', {
                 method: 'POST',
-                headers: { 'content-type': 'application/json' },
+                headers: {
+                  'content-type': 'application/json',
+                  authorization: `Bearer ${adminToken}`,
+                },
                 body: JSON.stringify({ scenario: 'configuration_1' }),
               });
               return r.json();
@@ -181,9 +187,15 @@ export function CyberPanel() {
           disabled={!!busy}
           onClick={() =>
             void run('OSNMA MAC fail', async () => {
+              const adminToken =
+                (import.meta as { env?: Record<string, string> }).env
+                  ?.VITE_NORTHSTAR_ADMIN_TOKEN ?? 'northstar-demo-admin';
               const r = await fetch('/api/osnma/verify', {
                 method: 'POST',
-                headers: { 'content-type': 'application/json' },
+                headers: {
+                  'content-type': 'application/json',
+                  authorization: `Bearer ${adminToken}`,
+                },
                 body: JSON.stringify({ scenario: 'failure' }),
               });
               return r.json();

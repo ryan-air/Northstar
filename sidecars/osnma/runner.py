@@ -20,7 +20,14 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 VENDOR = ROOT / "vendor" / "OSNMA"
-CACHE = ROOT / "data" / "fixtures" / "osnma_icd_cache.json"
+# P1.5: runtime cache lives in the data dir; the tracked fixture is only the seed.
+_DATA_DIR = os.environ.get("NORTHSTAR_DATA_DIR", ".northstar/data")
+_DATA_DIR_PATH = Path(_DATA_DIR) if os.path.isabs(_DATA_DIR) else ROOT / _DATA_DIR
+CACHE = (
+    ROOT / "data" / "fixtures" / "osnma_icd_cache.json"
+    if os.environ.get("NORTHSTAR_LEGACY_DATA_PATHS") == "true"
+    else Path(os.environ.get("NORTHSTAR_OSNMA_CACHE_PATH", str(_DATA_DIR_PATH / "osnma_icd_cache.json")))
+)
 LOGS = Path(__file__).resolve().parent / "logs"
 MODE = "protocol_verification_demo"
 LIVE = "not_connected"

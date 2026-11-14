@@ -174,7 +174,8 @@ async function main() {
     return { ok: true, kind, result: app.getRfLabResult(), snapshot: app.snapshot() };
   });
 
-  server.post('/api/osnma/verify', async (req, reply) => {
+  // P4.2: state-changing — admin only.
+  server.post('/api/osnma/verify', { preHandler: requireAdmin }, async (req, reply) => {
     const body = (req.body ?? {}) as { scenario?: string };
     const scenario =
       body.scenario === 'failure' || body.scenario === 'failed'
@@ -264,51 +265,24 @@ async function main() {
     '/api/challenge/:deviceId',
     async (req, reply) => issueSignedChallenge(req.params.deviceId, req.body, reply),
   );
-  // Public-key-only self-enrol (device holds the private key). No admin token —
-  // shore never generates device secrets. Rotate/revoke remain admin-gated.
+  // P4.1: enrolment requires the admin bearer or X-Northstar-Enrol-Token (generated on
+  // first run into NORTHSTAR_DATA_DIR/enrol.token; the device-sim reads it). Shore still
+  // never generates device secrets. A vessel with an active device cannot gain a second
+  // one unless an admin sends replace: true.
+  app.enrolToken();
   server.post('/api/devices/enrol', async (req, reply) => {
-    const body = req.body as {
-      device_id?: string;
-      entity_id?: string;
-      public_key_b64?: string;
-    };
-    if (!body?.device_id || !body.entity_id || !body.public_key_b64) {
-      return reply
-        .code(400)
-        .send({ error: 'device_id, entity_id and public_key_b64 are required' });
-    }
-    const existing = app.registry.get(body.device_id);
-    if (existing) {
-      if (
-        existing.entity_id !== body.entity_id ||
-        existing.public_key !== body.public_key_b64
-      ) {
-        return reply.code(409).send({
-          error: 'device_already_enrolled',
-          detail:
-            'Local device key/entity does not match the enrolled record. Clear data/fixtures/devices.json to [] (or enrol a new device_id) — do not share .northstar/ keys across machines.',
-          enrolled: {
-            device_id: existing.device_id,
-            entity_id: existing.entity_id,
-            key_id: existing.key_id,
-          },
-        });
-      }
-      return { ok: true, enrollment: existing, existing: true };
-    }
-    const { enrollment } = await app.registry.enroll({
-      device_id: body.device_id,
-      entity_id: body.entity_id,
-      public_key_b64: body.public_key_b64,
-    });
-    app.audit.append('device_enrolled', {
-      device_id: enrollment.device_id,
-      entity_id: enrollment.entity_id,
-      key_id: enrollment.key_id,
-      private_key_issued: false,
-    });
-    return { ok: true, enrollment, existing: false };
+    const isAdmin = !!adminToken && req.headers.authorization === `Bearer ${adminToken}`;
+    const tokenHeader = req.headers['x-northstar-enrol-token'];
+    const result = await app.enrolDevice(
+      (req.body ?? {}) as Parameters<typeof app.enrolDevice>[0],
+      {
+        admin: isAdmin,
+        enrolToken: Array.isArray(tokenHeader) ? tokenHeader[0] : tokenHeader,
+      },
+    );
+    return reply.code(result.status).send(result.body);
   });
+  server.get('/api/lab/clock', async () => app.labClock());
   /** Demo: signed envelope without challenge_nonce → fail closed when required. */
   server.post('/api/demo/challenge-miss', { preHandler: requireAdmin }, async () => {
     const { generateKeyPair, signPayload, bytesToB64 } = await import('@northstar/core');

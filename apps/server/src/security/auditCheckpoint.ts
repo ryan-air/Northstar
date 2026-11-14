@@ -17,11 +17,48 @@ export interface AuditCheckpoint {
   shore_sig: string;
 }
 
-function checkpointPath(rel = 'data/fixtures/audit.checkpoint.json'): string {
-  return join(REPO_ROOT, rel);
+let CHECKPOINT_PATH = join(REPO_ROOT, 'data/fixtures/audit.checkpoint.json');
+
+/** P1.5: point checkpoints at the runtime data dir. */
+export function setAuditCheckpointPath(path: string): void {
+  CHECKPOINT_PATH = path;
 }
 
-export async function writeAuditCheckpoint(
+function checkpointPath(rel?: string): string {
+  return rel ? join(REPO_ROOT, rel) : CHECKPOINT_PATH;
+}
+
+/**
+ * P4.4: checkpoint writes are chained so they complete in order — a slow signature
+ * for seq N can never land after (and overwrite) the checkpoint for seq N+1.
+ */
+let writeQueue: Promise<unknown> = Promise.resolve();
+
+export function enqueueAuditCheckpoint(
+  shore: ShoreKeyring,
+  input: { seq: number; tip_hash: string; entry_count: number },
+  mirrorPath?: string,
+): Promise<AuditCheckpoint> {
+  const next = writeQueue.then(() => writeAuditCheckpointNow(shore, input, mirrorPath));
+  writeQueue = next.catch(() => undefined);
+  return next;
+}
+
+/** Resolves once every checkpoint write queued so far has completed. */
+export function auditCheckpointsSettled(): Promise<void> {
+  return writeQueue.then(() => undefined);
+}
+
+/** Queued (ordered) checkpoint write. Kept under its original name for callers. */
+export function writeAuditCheckpoint(
+  shore: ShoreKeyring,
+  input: { seq: number; tip_hash: string; entry_count: number },
+  mirrorPath?: string,
+): Promise<AuditCheckpoint> {
+  return enqueueAuditCheckpoint(shore, input, mirrorPath);
+}
+
+async function writeAuditCheckpointNow(
   shore: ShoreKeyring,
   input: { seq: number; tip_hash: string; entry_count: number },
   mirrorPath?: string,
@@ -46,10 +83,8 @@ export async function writeAuditCheckpoint(
   return checkpoint;
 }
 
-export function readAuditCheckpoint(
-  rel = 'data/fixtures/audit.checkpoint.json',
-): AuditCheckpoint | null {
-  const path = join(REPO_ROOT, rel);
+export function readAuditCheckpoint(rel?: string): AuditCheckpoint | null {
+  const path = checkpointPath(rel);
   if (!existsSync(path)) return null;
   try {
     return JSON.parse(readFileSync(path, 'utf8')) as AuditCheckpoint;

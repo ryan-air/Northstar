@@ -57,6 +57,33 @@ export const PositionEventSchema = z.object({
     signal_quality_available: false,
   }),
   raw_ref: z.string().nullable().optional(),
+  /** AIS navigational status (0–15). Self-reported by the vessel; never used as an exemption. */
+  nav_status: z.number().int().min(0).max(15).nullable().optional(),
+  /** AIS rate of turn in °/min (decoded; null when not available). */
+  rot_deg_min: z.number().nullable().optional(),
+  /** AIS RAIM flag. */
+  raim: z.boolean().nullable().optional(),
+  /** AIS UTC second of the position report (0–59; 60–63 are mapped to null = unavailable). */
+  ais_utc_second: z.number().int().min(0).max(59).nullable().optional(),
+  /** AIS EPFD / position fixing device type (posType). */
+  epfd_type: z.number().int().nullable().optional(),
+  /** Antenna reference offsets A (bow), B (stern), C (port), D (starboard) in metres. */
+  dimensions_m: z
+    .object({
+      a: z.number().nonnegative(),
+      b: z.number().nonnegative(),
+      c: z.number().nonnegative(),
+      d: z.number().nonnegative(),
+    })
+    .nullable()
+    .optional(),
+  /** True when the event was interpolated between two real samples (Hist Lab). */
+  interpolated: z.boolean().optional(),
+  /**
+   * Time the observation physically refers to, when different from source_timestamp
+   * (e.g. device-sim sampling the onboard track at replay time). Used for kinematics/alignment.
+   */
+  observation_time: z.string().datetime().optional(),
   labels: z
     .object({
       simulated: z.boolean().optional(),
@@ -86,8 +113,12 @@ export const CheckIdSchema = z.enum([
   'spatial_aoa',
   'signed_vs_ais',
   'fleet_coherence',
+  'identity',
 ]);
 export type CheckId = z.infer<typeof CheckIdSchema>;
+
+export const EvidenceClassSchema = z.enum(['live', 'recorded', 'simulated', 'demo']);
+export type EvidenceClass = z.infer<typeof EvidenceClassSchema>;
 
 /** Detection-layer result (spec §9.2). */
 export const CheckResultSchema = z.object({
@@ -105,6 +136,12 @@ export const CheckResultSchema = z.object({
   missing_reason: z.string().nullable().default(null),
   evidence: z.record(z.string(), z.unknown()).optional(),
   hard_alert: z.boolean().default(false),
+  /**
+   * Provenance of the evidence behind this check:
+   * live = real-time real-world source, recorded = real data replayed,
+   * simulated = synthetic/derived, demo = fixed fixture / protocol test vector.
+   */
+  evidence_class: EvidenceClassSchema.optional(),
 });
 export type CheckResult = z.infer<typeof CheckResultSchema>;
 
@@ -113,6 +150,11 @@ export const TrustAssessmentSchema = z.object({
   trust_score: z.number().int().min(0).max(100),
   trust_band: z.enum(['high', 'caution', 'suspicious', 'critical']),
   evidence_coverage: z.number().min(0).max(100),
+  /**
+   * Coverage counting only checks whose evidence_class is live or recorded.
+   * evidence_coverage (above) is unchanged and still counts simulated/demo evidence.
+   */
+  verified_evidence_coverage: z.number().min(0).max(100).optional(),
   coverage_band: z.enum(['high', 'medium', 'low']),
   available_checks: z.number().int().nonnegative(),
   expected_checks: z.number().int().nonnegative(),

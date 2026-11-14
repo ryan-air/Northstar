@@ -13,6 +13,33 @@ export interface AisStreamConfig {
   onMessage?: (raw: unknown) => void;
 }
 
+/**
+ * Parse AISStream MetaData.time_utc (e.g. "2024-05-01 12:34:56.789 +0000 UTC") and
+ * replace the seconds with the AIS UTC-second field when it is valid (0–59).
+ * Returns the observation time — NOT the receive time.
+ */
+export function aisStreamObservationTime(
+  timeUtc: string | undefined,
+  aisSecond: number | undefined,
+  fallbackMs: number,
+): { ms: number; from: 'ais_second' | 'time_utc' | 'receive_time' } {
+  let base = NaN;
+  if (timeUtc) {
+    const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d+)?/.exec(timeUtc.trim());
+    if (m) base = Date.parse(`${m[1]}T${m[2]}${m[3] ? m[3].slice(0, 4) : ''}Z`);
+  }
+  if (!Number.isFinite(base)) return { ms: fallbackMs, from: 'receive_time' };
+  if (typeof aisSecond === 'number' && aisSecond >= 0 && aisSecond <= 59) {
+    const d = new Date(base);
+    d.setUTCSeconds(aisSecond, 0);
+    let ms = d.getTime();
+    // Report second is from before receipt; if it lands in the future, it was the previous minute.
+    if (ms > base + 1000) ms -= 60_000;
+    return { ms, from: 'ais_second' };
+  }
+  return { ms: base, from: 'time_utc' };
+}
+
 export class AisStreamAdapter {
   private ws: WebSocket | null = null;
   status: 'unavailable' | 'connecting' | 'ok' | 'down' = 'unavailable';
@@ -62,6 +89,7 @@ export class AisStreamAdapter {
               Longitude?: number;
               Latitude?: number;
               longitude?: number;
+              time_utc?: string;
             };
             Message?: {
               PositionReport?: {
@@ -71,6 +99,11 @@ export class AisStreamAdapter {
                 Sog?: number;
                 Cog?: number;
                 TrueHeading?: number;
+                Timestamp?: number;
+                PositionAccuracy?: boolean;
+                Raim?: boolean;
+                RateOfTurn?: number;
+                NavigationalStatus?: number;
               };
             };
           };
@@ -82,7 +115,9 @@ export class AisStreamAdapter {
           const lon = pr.Longitude ?? raw.MetaData?.Longitude ?? raw.MetaData?.longitude;
           const mmsi = pr.UserID ?? raw.MetaData?.MMSI;
           if (lat == null || lon == null || mmsi == null) return;
-          const nowIso = new Date().toISOString();
+          const recvMs = Date.now();
+          const nowIso = new Date(recvMs).toISOString();
+          const obs = aisStreamObservationTime(raw.MetaData?.time_utc, pr.Timestamp, recvMs);
           const event: PositionEvent = {
             schema_version: 1,
             entity_id: `LIVE-${mmsi}`,
@@ -95,15 +130,35 @@ export class AisStreamAdapter {
               pr.TrueHeading != null && pr.TrueHeading < 360 ? pr.TrueHeading : null,
             source: 'ais',
             provider_id: 'aisstream',
-            source_timestamp: nowIso,
+            upstream_lineage: ['aisstream.io', 'volunteer_terrestrial_network'],
+            // P3.4: AIS observation time (time_utc + Timestamp second), not receive time.
+            source_timestamp: new Date(obs.ms).toISOString(),
             ingested_at: nowIso,
             device_signature_status: 'missing',
             osnma_status: 'unavailable',
             quality: {
-              position_accuracy_m: null,
+              position_accuracy_m:
+                pr.PositionAccuracy === true ? 10 : pr.PositionAccuracy === false ? 50 : null,
               signal_quality_available: false,
             },
-            labels: { live: true, simulated: false, fixture: false, mmsi },
+            ais_utc_second:
+              typeof pr.Timestamp === 'number' && pr.Timestamp >= 0 && pr.Timestamp <= 59
+                ? pr.Timestamp
+                : null,
+            raim: typeof pr.Raim === 'boolean' ? pr.Raim : null,
+            nav_status:
+              typeof pr.NavigationalStatus === 'number' &&
+              pr.NavigationalStatus >= 0 &&
+              pr.NavigationalStatus <= 15
+                ? pr.NavigationalStatus
+                : null,
+            labels: {
+              live: true,
+              simulated: false,
+              fixture: false,
+              mmsi,
+              time_source: obs.from,
+            },
           };
           this.config.onPosition?.(event);
         } catch {

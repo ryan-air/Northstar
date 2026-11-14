@@ -97,9 +97,20 @@ export class OnboardTrack {
     return new OnboardTrack(options.mmsi, samples, options.noiseMeters ?? 3);
   }
 
+  /** Legacy: wall-clock playhead looping over the track (independent of the Lab clock). */
   position(nowMs = Date.now()): OnboardPosition {
     const elapsedMs = Math.max(0, nowMs - this.startedAtMs);
     const targetMs = this.firstTimeMs + (elapsedMs % this.durationMs);
+    return this.positionAt(targetMs);
+  }
+
+  /** Whether the absolute replay time lies within the recorded track. */
+  covers(replayMs: number): boolean {
+    return replayMs >= this.firstTimeMs && replayMs <= this.firstTimeMs + this.durationMs;
+  }
+
+  /** P3.2: position at an absolute replay time (the Lab clock). */
+  positionAt(targetMs: number): OnboardPosition {
     let lo = 0;
     let hi = this.samples.length - 1;
     while (lo < hi) {
