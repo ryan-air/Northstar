@@ -37,7 +37,7 @@ interface VesselPlayhead {
   /** Shared-timeline mode: index of the first sample strictly after the lab clock. */
   nextIdx: number;
   /** ms into the track (loops) */
-  cursorMs: number;
+  playheadMs: number;
   sequence: number;
   lastLat: number;
   lastLon: number;
@@ -125,7 +125,7 @@ export class HistoricalLab {
       return {
         track,
         nextIdx: 0,
-        cursorMs: 0,
+        playheadMs: 0,
         sequence: 1,
         lastLat: s0.lat,
         lastLon: s0.lon,
@@ -264,7 +264,7 @@ export class HistoricalLab {
       return;
     }
     for (const v of this.vessels) {
-      v.cursorMs = 0;
+      v.playheadMs = 0;
       const s0 = v.track.samples[0]!;
       v.lastLat = s0.lat;
       v.lastLon = s0.lon;
@@ -440,8 +440,8 @@ export class HistoricalLab {
     }
 
     for (const v of this.vessels) {
-      v.cursorMs = (v.cursorMs + stepMs) % v.track.durationMs;
-      const sample = this.sampleAt(v.track, v.cursorMs);
+      v.playheadMs = (v.playheadMs + stepMs) % v.track.durationMs;
+      const sample = this.sampleAt(v.track, v.playheadMs);
       const truePos = { lat: sample.lat, lon: sample.lon };
       v.sequence += 1;
 
@@ -510,11 +510,11 @@ export class HistoricalLab {
     return { aisA, aisB, imu, gnss, simTimeIso, wrapped: false };
   }
 
-  private sampleAt(track: VesselTrack, cursorMs: number): VesselTrack['samples'][number] {
+  private sampleAt(track: VesselTrack, playheadMs: number): VesselTrack['samples'][number] {
     const samples = track.samples;
     const t0 =
       samples[0]!.timestamp_external_ms ?? Date.parse(samples[0]!.captured_at);
-    const target = t0 + cursorMs;
+    const target = t0 + playheadMs;
     let lo = 0;
     let hi = samples.length - 1;
     while (lo < hi) {
