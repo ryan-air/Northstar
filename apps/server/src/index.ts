@@ -283,7 +283,16 @@ async function main() {
         existing.entity_id !== body.entity_id ||
         existing.public_key !== body.public_key_b64
       ) {
-        return reply.code(409).send({ error: 'device_already_enrolled' });
+        return reply.code(409).send({
+          error: 'device_already_enrolled',
+          detail:
+            'Local device key/entity does not match the enrolled record. Clear data/fixtures/devices.json to [] (or enrol a new device_id) — do not share .northstar/ keys across machines.',
+          enrolled: {
+            device_id: existing.device_id,
+            entity_id: existing.entity_id,
+            key_id: existing.key_id,
+          },
+        });
       }
       return { ok: true, enrollment: existing, existing: true };
     }

@@ -1,8 +1,8 @@
 {
   "seq": 2,
-  "tip_hash": "4b0b22a5be406fce14a7347410dc4d35c61df6f8b3d8da692455d9d6084c8292",
-  "ts": "2026-11-14T05:04:15.678Z",
+  "tip_hash": "376f310d7e1cdcc8d61145ee17710e31a6215a4c645e828df7d38fad33d54feb",
+  "ts": "2026-11-14T06:15:06.537Z",
   "entry_count": 2,
   "shore_key_id": "shore-audit-1",
-  "shore_sig": "l5e1NPWKmrSQMDH0aGETzsTR7IQJzAIacoeznis5ngLHM0c3r7im1r8JYI+sw3bOt9jdanuuhXOwTE/dwLzvAg=="
+  "shore_sig": "wz7fTbV8Qf7Ej7NGbp+OvQuAN4HULEiCexjnEAVLs4Iyyo6oETQjvEZf9KiOc2jLs1GaN/4zSrK/4kkY/v2cAw=="
 }
