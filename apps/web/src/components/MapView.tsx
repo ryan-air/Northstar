@@ -24,10 +24,10 @@ const ONLINE_STYLE =
   'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 const BAND_COLOR: Record<TrustBand, string> = {
-  high: '#39b980',
-  caution: '#d99a36',
-  suspicious: '#d9773f',
-  critical: '#dc5555',
+  high: '#3fd08f',
+  caution: '#e6a73c',
+  suspicious: '#e8833f',
+  critical: '#ee5a5a',
 };
 
 /** Stable empty array — `?? []` inside a Zustand selector creates a new ref every call and infinite-loops React. */
@@ -43,7 +43,7 @@ function offlineStyle(): StyleSpecification {
       {
         id: 'bg',
         type: 'background',
-        paint: { 'background-color': '#0e1a24' },
+        paint: { 'background-color': '#0c1c2b' },
       },
     ],
   };
@@ -92,7 +92,7 @@ function tracksToGeoJSON(vessels: VesselState[]) {
             color:
               v.trust.trust_band === 'critical' || v.trust.trust_band === 'suspicious'
                 ? BAND_COLOR[v.trust.trust_band]
-                : '#58758a',
+                : '#5f8fae',
           },
           geometry: {
             type: 'LineString' as const,
@@ -185,32 +185,32 @@ export function MapView() {
           id: 'land-fill',
           type: 'fill',
           source: 'land',
-          paint: { 'fill-color': '#1b2730', 'fill-opacity': 0.9 },
+          paint: { 'fill-color': '#1d3330', 'fill-opacity': 0.9 },
         });
         addLayerOnce({
           id: 'land-line',
           type: 'line',
           source: 'land',
           // The coastline GeoJSON is cut into 0.1° tiles; the faint outline doubles as a chart grid.
-          paint: { 'line-color': '#2f4654', 'line-width': 0.7, 'line-opacity': 0.75 },
+          paint: { 'line-color': '#2f8a63', 'line-width': 0.8, 'line-opacity': 0.7 },
         });
         addLayerOnce({
           id: 'ports-fill',
           type: 'fill',
           source: 'ports',
-          paint: { 'fill-color': '#26394a', 'fill-opacity': 0.45 },
+          paint: { 'fill-color': '#2c4a63', 'fill-opacity': 0.55 },
         });
         addLayerOnce({
           id: 'lanes-line',
           type: 'line',
           source: 'lanes',
-          paint: { 'line-color': '#3d6a86', 'line-width': 1, 'line-opacity': 0.6, 'line-dasharray': [3, 3] },
+          paint: { 'line-color': '#4f8fb8', 'line-width': 1, 'line-opacity': 0.75, 'line-dasharray': [3, 3] },
         });
         addLayerOnce({
           id: 'restricted-fill',
           type: 'fill',
           source: 'restricted',
-          paint: { 'fill-color': '#7a3535', 'fill-opacity': 0.22 },
+          paint: { 'fill-color': '#9a3a3a', 'fill-opacity': 0.28 },
         });
 
         // OpenSeaMap seamarks when online
@@ -228,7 +228,7 @@ export function MapView() {
               id: 'seamark',
               type: 'raster',
               source: 'seamark',
-              paint: { 'raster-opacity': 0.4 },
+              paint: { 'raster-opacity': 0.6 },
             });
           } catch {
             /* optional */
@@ -243,8 +243,8 @@ export function MapView() {
           filter: ['==', ['geometry-type'], 'LineString'],
           paint: {
             'line-color': ['get', 'color'],
-            'line-width': 1.5,
-            'line-opacity': 0.6,
+            'line-width': 1.6,
+            'line-opacity': 0.75,
           },
         });
         addLayerOnce({
@@ -284,7 +284,7 @@ export function MapView() {
             'text-optional': true,
           },
           paint: {
-            'text-color': '#9fb0bd',
+            'text-color': '#b9c8d3',
             'text-halo-color': '#101820',
             'text-halo-width': 1.2,
             // Labels fade in as you zoom; at fleet scale they would bury the map.
