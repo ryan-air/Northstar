@@ -1,15 +1,4 @@
 import { useStore } from '../lib/store';
-import type { TrustBand } from '../lib/types';
-
-// Stable ordering: worst band first, then by entity_id. Sorting by exact trust
-// score churns the list every tick (scores wobble, rows reorder, scroll jumps),
-// so we bucket by band and only reorder when a vessel actually crosses a band.
-const BAND_RANK: Record<TrustBand, number> = {
-  critical: 0,
-  suspicious: 1,
-  caution: 2,
-  high: 3,
-};
 
 export function LeftPanel() {
   const snapshot = useStore((s) => s.snapshot);
@@ -20,11 +9,11 @@ export function LeftPanel() {
 
   const vessel = vessels.find((v) => v.entity_id === selectedId);
 
+  // Ascending trust score (lowest / worst first); entity_id breaks ties for a
+  // deterministic order.
   const sortedVessels = [...vessels].sort((a, b) => {
-    const ra = BAND_RANK[a.trust.trust_band] ?? 9;
-    const rb = BAND_RANK[b.trust.trust_band] ?? 9;
-    if (ra !== rb) return ra - rb;
-    return a.entity_id.localeCompare(b.entity_id);
+    const d = (a.trust.trust_score ?? 0) - (b.trust.trust_score ?? 0);
+    return d !== 0 ? d : a.entity_id.localeCompare(b.entity_id);
   });
 
   const clearSelection = () => useStore.setState({ selectedId: null });

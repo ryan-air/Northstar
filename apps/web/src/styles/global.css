@@ -722,6 +722,16 @@ button {
   background: var(--bg-panel-2);
   font-size: 12px;
 }
+.threat-card button {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 8px;
+}
+.threat-card button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 /* Cyber floating window */
 .cyber-window-overlay {
