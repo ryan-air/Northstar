@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
 interface ReplaySample {
@@ -97,9 +97,44 @@ export class OnboardTrack {
     return new OnboardTrack(options.mmsi, samples, options.noiseMeters ?? 3);
   }
 
+  /**
+   * Independent onboard receiver log (lab return U12 CSV: time_utc, lat, lon, sog_kn,
+   * cog_deg, heading_deg). Real receiver positions, so no synthetic noise is added.
+   */
+  static loadCsv(path: string, mmsi: number): OnboardTrack {
+    const lines = readFileSync(path, 'utf8').split(/\r?\n/).filter((l) => l.trim());
+    const h = lines[0]!.split(',').map((x) => x.trim());
+    const col = (n: string) => h.indexOf(n);
+    const [it, ila, ilo, isog, icog, ihdg] = ['time_utc', 'lat', 'lon', 'sog_kn', 'cog_deg', 'heading_deg'].map(col);
+    const samples: ReplaySample[] = [];
+    for (const line of lines.slice(1)) {
+      const c = line.split(',');
+      const t = Date.parse(c[it!] ?? '');
+      const lat = Number(c[ila!]);
+      const lon = Number(c[ilo!]);
+      if (!Number.isFinite(t) || !c[ila!] || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      const num = (i: number | undefined) => (i != null && i >= 0 && c[i] ? Number(c[i]) : null);
+      samples.push({ mmsi, lat, lon, sog: num(isog), cog: num(icog), heading: num(ihdg), timestamp_external_ms: t });
+    }
+    samples.sort((a, b) => sampleTime(a) - sampleTime(b));
+    if (samples.length === 0) throw new Error(`No positions in onboard log ${path}`);
+    return new OnboardTrack(mmsi, samples, 0);
+  }
+
+  /** Legacy: wall-clock playhead looping over the track (independent of the Lab clock). */
   position(nowMs = Date.now()): OnboardPosition {
     const elapsedMs = Math.max(0, nowMs - this.startedAtMs);
     const targetMs = this.firstTimeMs + (elapsedMs % this.durationMs);
+    return this.positionAt(targetMs);
+  }
+
+  /** Whether the absolute replay time lies within the recorded track. */
+  covers(replayMs: number): boolean {
+    return replayMs >= this.firstTimeMs && replayMs <= this.firstTimeMs + this.durationMs;
+  }
+
+  /** P3.2: position at an absolute replay time (the Lab clock). */
+  positionAt(targetMs: number): OnboardPosition {
     let lo = 0;
     let hi = this.samples.length - 1;
     while (lo < hi) {

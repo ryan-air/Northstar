@@ -13,6 +13,8 @@ import { b64ToBytes, canonicalBytes, type JsonValue } from '@northstar/core';
 import * as ed from '@noble/ed25519';
 import { NorthstarApp } from './app.js';
 import { REPO_ROOT } from './config.js';
+import { authorizeAdmin, isLoopbackHost, parseScopedTokens, plaintextTelemetryAllowed, resolveAdminToken, wsTokenOk, type AdminScope } from './security/adminAuth.js';
+import { labReturnSummary, listLabReturns, loadLabReturn } from './lab/labReturn.js';
 
 async function main() {
   const app = new NorthstarApp();
@@ -42,22 +44,40 @@ async function main() {
   await server.register(websocket);
 
   const testMode = process.env.NODE_ENV === 'test' || !!process.env.VITEST;
-  const adminToken =
-    process.env.NORTHSTAR_ADMIN_TOKEN ?? (testMode ? null : 'northstar-demo-admin');
-  if (!process.env.NORTHSTAR_ADMIN_TOKEN && !testMode) {
-    server.log.warn(
-      'NORTHSTAR_ADMIN_TOKEN is unset; admin routes require demo token "northstar-demo-admin"',
-    );
+  const adminCfg = resolveAdminToken({
+    envToken: process.env.NORTHSTAR_ADMIN_TOKEN,
+    testMode,
+    host: app.env.host,
+    allowDemo: process.env.NORTHSTAR_ALLOW_DEMO_ADMIN === 'true',
+  });
+  const adminToken = adminCfg.token;
+  if (adminCfg.warning) server.log.warn(adminCfg.warning);
+  const wsToken = process.env.NORTHSTAR_WS_TOKEN?.trim() || null;
+  if (!wsToken && !isLoopbackHost(app.env.host)) {
+    server.log.warn(`NORTHSTAR_WS_TOKEN is unset; /ws on ${app.env.host} is readable by anyone who can reach it`);
   }
-  const requireAdmin = async (
-    req: { headers: { authorization?: string } },
-    reply: { code: (status: number) => { send: (body: unknown) => unknown } },
-  ) => {
-    if (!adminToken) return;
-    if (req.headers.authorization !== `Bearer ${adminToken}`) {
-      return reply.code(401).send({ error: 'admin_authorization_required' });
-    }
-  };
+  // Scoped admin credentials (NORTHSTAR_ADMIN_TOKENS); the single admin token keeps '*'.
+  const principals = parseScopedTokens(process.env.NORTHSTAR_ADMIN_TOKENS);
+  if (principals.length) server.log.info(`scoped admin principals: ${principals.map((p) => `${p.name}[${[...p.scopes].join('+')}]`).join(', ')}`);
+  const requireScope =
+    (scope: AdminScope) =>
+    async (
+      req: { headers: { authorization?: string } },
+      reply: { code: (status: number) => { send: (body: unknown) => unknown } },
+    ) => {
+      const d = authorizeAdmin(req.headers.authorization, scope, adminToken, principals);
+      if (!d.ok) {
+        app.forensics.push('admin_denied', `Admin request denied (${d.error}) for scope ${scope}`, { scope, error: d.error }, 'warning');
+        return reply.code(d.status).send({ error: d.error, scope });
+      }
+    };
+  const allowPlaintextDevice = plaintextTelemetryAllowed(
+    app.env.host,
+    process.env.NORTHSTAR_ALLOW_PLAINTEXT_DEVICE === 'true',
+  );
+  if (!allowPlaintextDevice) {
+    server.log.warn(`plain-HTTP /api/telemetry disabled on ${app.env.host}: devices must use the TLS device server (NORTHSTAR_TLS_ENABLED)`);
+  }
 
   const telemetryByDevice = new Map<string, number[]>();
   const checkDeviceRate = (deviceId: string): boolean => {
@@ -159,22 +179,23 @@ async function main() {
     note: 'Dual-antenna lab IQ / AoA binds only to the full-stack Hist Lab vessel — never LIVE AIS.',
   }));
 
-  server.post('/api/rf/result', { preHandler: requireAdmin }, async (req, reply) => {
+  server.post('/api/rf/result', { preHandler: requireScope('rf') }, async (req, reply) => {
     const parsed = RfLabResultSchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_rf_result', detail: parsed.error.message });
     }
-    app.applyRfLabResult(parsed.data);
-    return { ok: true, result: app.getRfLabResult() };
+    const applied = app.applyRfLabResult(parsed.data);
+    return { ok: true, ...applied };
   });
 
-  server.post('/api/rf/load', { preHandler: requireAdmin }, async (req) => {
+  server.post('/api/rf/load', { preHandler: requireScope('rf') }, async (req) => {
     const kind = (req.body as { kind?: string })?.kind === 'spoof' ? 'spoof' : 'nominal';
-    app.loadRfLabResult(kind);
-    return { ok: true, kind, result: app.getRfLabResult(), snapshot: app.snapshot() };
+    const applied = app.loadRfLabResult(kind);
+    return { ok: true, kind, ...applied, result: app.getRfLabResult(), snapshot: app.snapshot() };
   });
 
-  server.post('/api/osnma/verify', async (req, reply) => {
+  // P4.2: state-changing — admin only.
+  server.post('/api/osnma/verify', { preHandler: requireScope('osnma') }, async (req, reply) => {
     const body = (req.body ?? {}) as { scenario?: string };
     const scenario =
       body.scenario === 'failure' || body.scenario === 'failed'
@@ -200,6 +221,8 @@ async function main() {
   server.get('/api/lab', async () => ({
     ...app.snapshot().lab,
     use_historical: app.useHistoricalLab,
+    injection_policy: 'simulated_only',
+    simulated_ships: app.simulatedShipIds(),
   }));
 
   server.post('/api/view-mode', async (req, reply) => {
@@ -244,7 +267,7 @@ async function main() {
     }
     return result;
   });
-  server.post('/api/audit/reanchor', { preHandler: requireAdmin }, async () => {
+  server.post('/api/audit/reanchor', { preHandler: requireScope('audit') }, async () => {
     const { writeAuditCheckpoint } = await import('./security/auditCheckpoint.js');
     app.audit.reanchor();
     const tip = app.audit.tip;
@@ -264,53 +287,46 @@ async function main() {
     '/api/challenge/:deviceId',
     async (req, reply) => issueSignedChallenge(req.params.deviceId, req.body, reply),
   );
-  // Public-key-only self-enrol (device holds the private key). No admin token —
-  // shore never generates device secrets. Rotate/revoke remain admin-gated.
+  // P4.1: enrolment requires the admin bearer or X-Northstar-Enrol-Token (generated on
+  // first run into NORTHSTAR_DATA_DIR/enrol.token; the device-sim reads it). Shore still
+  // never generates device secrets. A vessel with an active device cannot gain a second
+  // one unless an admin sends replace: true.
+  app.enrolToken();
   server.post('/api/devices/enrol', async (req, reply) => {
-    const body = req.body as {
-      device_id?: string;
-      entity_id?: string;
-      public_key_b64?: string;
-    };
-    if (!body?.device_id || !body.entity_id || !body.public_key_b64) {
-      return reply
-        .code(400)
-        .send({ error: 'device_id, entity_id and public_key_b64 are required' });
-    }
-    const existing = app.registry.get(body.device_id);
-    if (existing) {
-      if (
-        existing.entity_id !== body.entity_id ||
-        existing.public_key !== body.public_key_b64
-      ) {
-        return reply.code(409).send({
-          error: 'device_already_enrolled',
-          detail:
-            'Local device key/entity does not match the enrolled record. Clear data/fixtures/devices.json to [] (or enrol a new device_id) — do not share .northstar/ keys across machines.',
-          enrolled: {
-            device_id: existing.device_id,
-            entity_id: existing.entity_id,
-            key_id: existing.key_id,
-          },
-        });
-      }
-      return { ok: true, enrollment: existing, existing: true };
-    }
-    const { enrollment } = await app.registry.enroll({
-      device_id: body.device_id,
-      entity_id: body.entity_id,
-      public_key_b64: body.public_key_b64,
+    const dec = authorizeAdmin(req.headers.authorization, 'devices', adminToken, principals);
+    const isAdmin = dec.ok && dec.principal !== 'tests' && !!req.headers.authorization;
+    const tokenHeader = req.headers['x-northstar-enrol-token'];
+    const result = await app.enrolDevice(
+      (req.body ?? {}) as Parameters<typeof app.enrolDevice>[0],
+      {
+        admin: isAdmin,
+        enrolToken: Array.isArray(tokenHeader) ? tokenHeader[0] : tokenHeader,
+      },
+    );
+    return reply.code(result.status).send(result.body);
+  });
+  server.get('/api/lab/clock', async () => app.labClock());
+  /** Lab-return events (times and kinds only, no raw data) for jump-to controls. */
+  server.get('/api/lab/events', async () => app.labEvents() ?? { events: [] });
+  /** Reset only Lab + simulated ship positions (live ships and security state untouched). */
+  server.post('/api/lab/reset', { preHandler: requireScope('scenario') }, async () => app.resetLab());
+  server.post('/api/lab/seek', { preHandler: requireScope('scenario') }, async (req, reply) => {
+    const t = Date.parse(String((req.body as { t?: string } | undefined)?.t ?? ''));
+    if (Number.isNaN(t)) return reply.code(400).send({ error: 't (ISO time) required' });
+    const r = app.seekLab(t);
+    if (!r.ok) return reply.code(409).send({ error: 'historical lab not active' });
+    return r;
+  });
+  /** Imported lab returns (scripts/lab/import_lab_return.py → data/lab/<id>/): readiness only, no raw rows. */
+  server.get('/api/lab/returns', async () => {
+    const root = join(REPO_ROOT, 'data', 'lab');
+    return listLabReturns(root).map((id) => {
+      const r = loadLabReturn(root, id);
+      return r ? labReturnSummary(r) : { id, error: 'unreadable' };
     });
-    app.audit.append('device_enrolled', {
-      device_id: enrollment.device_id,
-      entity_id: enrollment.entity_id,
-      key_id: enrollment.key_id,
-      private_key_issued: false,
-    });
-    return { ok: true, enrollment, existing: false };
   });
   /** Demo: signed envelope without challenge_nonce → fail closed when required. */
-  server.post('/api/demo/challenge-miss', { preHandler: requireAdmin }, async () => {
+  server.post('/api/demo/challenge-miss', { preHandler: requireScope('demo') }, async () => {
     const { generateKeyPair, signPayload, bytesToB64 } = await import('@northstar/core');
     const target = app.fullstackEntityId() ?? 'VESSEL-001';
     const { privateKey, publicKey } = await generateKeyPair();
@@ -345,12 +361,12 @@ async function main() {
       ok: result.ok,
       expected: 'challenge_required or challenge_rejected',
       result,
-      note: 'Fail-closed demo when NORTHSTAR_CHALLENGE_REQUIRED=true',
+      note: 'Fail-closed check when NORTHSTAR_CHALLENGE_REQUIRED=true',
     };
   });
   server.post<{ Params: { id: string } }>(
     '/api/devices/:id/rotate',
-    { preHandler: requireAdmin },
+    { preHandler: requireScope('devices') },
     async (req, reply) => {
     try {
       const body = (req.body ?? {}) as { new_public_key_b64?: string };
@@ -362,7 +378,7 @@ async function main() {
   );
   server.post<{ Params: { id: string } }>(
     '/api/devices/:id/revoke',
-    { preHandler: requireAdmin },
+    { preHandler: requireScope('devices') },
     async (req, reply) => {
     const enrollment = await app.revokeDevice(req.params.id);
     if (!enrollment) return reply.code(404).send({ error: 'unknown device' });
@@ -403,10 +419,15 @@ async function main() {
       'Key rotate / revoke + shore-signed revocation list',
       'SHA-256 audit hash chain + shore-signed tip checkpoint',
       'OSNMAlib ICD TESLA/MAC (fullstack Hist Lab only by default)',
-      '2-ant lab IQ AoA (full-stack Hist Lab only)',
+      app.labFolder ? 'Recorded multi-element RF AoA for the lab vessel' : '2-ant lab IQ AoA (full-stack Hist Lab only)',
       app.env.mtlsEnabled
         ? 'mTLS on telemetry (channel identity)'
         : 'mTLS available (NORTHSTAR_TLS_ENABLED + MTLS_ENABLED)',
+      'Plain-HTTP telemetry refused on network binds (TLS device server)',
+      'Scoped admin tokens (scenario / rf / osnma / audit / devices / challenge test)',
+      'One-time, per-vessel enrolment tokens (hashed, expiring)',
+      'Attacks injected only into simulated ships',
+      'Seeded fuzzing of untrusted inputs + SBOM in CI',
     ],
     rf: app.getRfLabResult(),
     fullstack_entity_id: app.fullstackEntityId(),
@@ -440,8 +461,14 @@ async function main() {
     };
   });
 
+  // Display copies of the polygon layers: simplified once, cached, gzipped on request.
+  // ?detail=full serves the exact geometry the checks use.
+  const { simplifyForDisplay } = await import('./geo/displaySimplify.js');
+  const { gzipSync } = await import('node:zlib');
+  const geoCache = new Map<string, { json: string; gz: Buffer }>();
   server.get('/api/geo/:layer', async (req, reply) => {
     const layer = (req.params as { layer: string }).layer;
+    const full = (req.query as { detail?: string }).detail === 'full';
     const map: Record<string, unknown> = {
       land: app.geo.landGeoJson,
       ports: app.geo.portsGeoJson,
@@ -449,17 +476,37 @@ async function main() {
       restricted: app.geo.restrictedGeoJson,
     };
     if (!map[layer]) return reply.code(404).send({ error: 'unknown_layer' });
-    return map[layer];
+    const key = `${layer}:${full ? 'full' : 'display'}`;
+    let c = geoCache.get(key);
+    if (!c) {
+      const src = map[layer] as Parameters<typeof simplifyForDisplay>[0];
+      const data = full
+        ? src
+        : layer === 'land'
+          ? simplifyForDisplay(src)
+          : layer === 'ports'
+            ? simplifyForDisplay(src, 0.00005, 0) // keep every quay/pier
+            : src;
+      const json = JSON.stringify(data);
+      c = { json, gz: gzipSync(json) };
+      geoCache.set(key, c);
+    }
+    reply.header('content-type', 'application/json; charset=utf-8').header('cache-control', 'public, max-age=3600');
+    reply.header('vary', 'accept-encoding');
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''))) {
+      return reply.header('content-encoding', 'gzip').send(c.gz);
+    }
+    return reply.send(c.json);
   });
 
   server.post('/api/scenario', {
-    preHandler: requireAdmin,
+    preHandler: requireScope('scenario'),
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const parsed = ScenarioCommandSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.message });
-    app.setScenario(parsed.data.scenario, parsed.data.entity_id);
-    return { ok: true, snapshot: app.snapshot() };
+    const applied = app.setScenario(parsed.data.scenario, parsed.data.entity_id);
+    return { ok: true, ...applied, snapshot: app.snapshot() };
   });
 
   server.post('/api/select', async (req, reply) => {
@@ -469,9 +516,22 @@ async function main() {
     return { ok: true };
   });
 
+  /** One-time, per-vessel enrolment token (admin scope 'devices'); returned once, stored hashed. */
+  server.post('/api/devices/enrol-tokens', { preHandler: requireScope('devices') }, async (req, reply) => {
+    const body = (req.body ?? {}) as { entity_id?: string; ttl_s?: number };
+    if (!body.entity_id || !/^[A-Za-z0-9_-]{3,64}$/.test(body.entity_id)) {
+      return reply.code(400).send({ error: 'entity_id required' });
+    }
+    const dec = authorizeAdmin(req.headers.authorization, 'devices', adminToken, principals);
+    return { ok: true, entity_id: body.entity_id, ...app.issueEnrolToken(body.entity_id, body.ttl_s ?? 3600, dec.ok ? dec.principal : 'unknown') };
+  });
+
   server.post('/api/telemetry', {
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (req, reply) => {
+    if (!allowPlaintextDevice) {
+      return reply.code(403).send({ error: 'tls_required', hint: 'send telemetry to the TLS device server' });
+    }
     const parsed = SignedTelemetryEnvelopeSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_envelope', detail: parsed.error.message });
     if (!checkDeviceRate(parsed.data.payload.device_id)) {
@@ -490,7 +550,14 @@ async function main() {
     return lines.slice(-50).map((l) => JSON.parse(l));
   });
 
-  server.get('/ws', { websocket: true }, (socket) => {
+  server.get('/ws', {
+    websocket: true,
+    preValidation: async (req, reply) => {
+      if (!wsTokenOk(req.query, req.headers.authorization, wsToken)) {
+        return reply.code(401).send({ error: 'ws_token_required' });
+      }
+    },
+  }, (socket) => {
     const unsub = app.subscribe((msg) => {
       try {
         socket.send(JSON.stringify(msg));

@@ -9,6 +9,11 @@ export const TelemetryPayloadSchema = z.object({
   entity_id: z.string().min(1),
   sequence_number: z.number().int().nonnegative(),
   timestamp: z.string().datetime(),
+  /**
+   * Optional: the time the position refers to (e.g. Hist Lab replay clock).
+   * `timestamp` stays wall-clock so freshness/replay protection are unchanged.
+   */
+  observation_time: z.string().datetime().optional(),
   firmware_version: z.string(),
   position: PositionSchema,
   speed_over_ground_knots: z.number().nonnegative().nullable(),

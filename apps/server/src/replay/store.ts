@@ -1,13 +1,30 @@
 import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { REPO_ROOT } from '../config.js';
 import type { ReplayManifest, ReplayRecord, VesselTrack } from './types.js';
 
 const REPLAY_DIR = join(REPO_ROOT, 'data/replay');
 const JSONL_PATH = join(REPLAY_DIR, 'gof_ais.jsonl');
 const MANIFEST_PATH = join(REPLAY_DIR, 'manifest.json');
+/** Frozen evaluation dataset (P0.2) — never appended to. */
+export const EVAL_SNAPSHOT_PATH = join(REPLAY_DIR, 'snapshots/gof_ais.eval-v1.jsonl');
 
-function shipTypeToClass(t?: number): VesselTrack['vessel_class'] {
+/**
+ * Where the Lab reads from and the recorder appends to. Defaults are the legacy
+ * tracked paths; the app points them at the runtime data dir (P1.5) and tests point
+ * the read path at the frozen snapshot (P0.2).
+ */
+const paths = { read: JSONL_PATH, append: JSONL_PATH, manifest: MANIFEST_PATH };
+
+export function configureReplayStore(p: Partial<{ read: string; append: string; manifest: string }>): void {
+  Object.assign(paths, p);
+}
+
+export function replayStorePaths(): Readonly<typeof paths> {
+  return { ...paths };
+}
+
+export function shipTypeToClass(t?: number): VesselTrack['vessel_class'] {
   if (t == null) return 'other';
   if (t === 30) return 'fishing';
   if (t === 52) return 'tug';
@@ -19,29 +36,47 @@ function shipTypeToClass(t?: number): VesselTrack['vessel_class'] {
 }
 
 export function ensureReplayDir(): void {
-  mkdirSync(REPLAY_DIR, { recursive: true });
+  mkdirSync(dirname(paths.append), { recursive: true });
 }
 
 export function loadManifest(): ReplayManifest | null {
-  if (!existsSync(MANIFEST_PATH)) return null;
-  return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as ReplayManifest;
+  if (!existsSync(paths.manifest)) return null;
+  return JSON.parse(readFileSync(paths.manifest, 'utf8')) as ReplayManifest;
 }
 
 export function saveManifest(m: ReplayManifest): void {
-  ensureReplayDir();
-  writeFileSync(MANIFEST_PATH, JSON.stringify(m, null, 2));
+  mkdirSync(dirname(paths.manifest), { recursive: true });
+  writeFileSync(paths.manifest, JSON.stringify(m, null, 2));
 }
 
 export function appendRecords(records: ReplayRecord[]): void {
   if (records.length === 0) return;
   ensureReplayDir();
   const lines = records.map((r) => JSON.stringify(r)).join('\n') + '\n';
-  appendFileSync(JSONL_PATH, lines);
+  appendFileSync(paths.append, lines);
 }
 
-export function loadAllRecords(): ReplayRecord[] {
-  if (!existsSync(JSONL_PATH)) return [];
-  const text = readFileSync(JSONL_PATH, 'utf8');
+/** Dedup key (P1.3): same MMSI + same AIS timestamp = same report re-polled. */
+export function recordKey(r: Pick<ReplayRecord, 'mmsi' | 'timestamp_external_ms' | 'captured_at'>): string {
+  return `${r.mmsi}:${r.timestamp_external_ms ?? `cap:${r.captured_at}`}`;
+}
+
+/** Remove re-polled duplicates on read; first occurrence wins. Files are never rewritten. */
+export function dedupRecords(records: ReplayRecord[]): ReplayRecord[] {
+  const seen = new Set<string>();
+  const out: ReplayRecord[] = [];
+  for (const r of records) {
+    const k = recordKey(r);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
+}
+
+export function loadAllRecords(path = paths.read): ReplayRecord[] {
+  if (!existsSync(path)) return [];
+  const text = readFileSync(path, 'utf8');
   const out: ReplayRecord[] = [];
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
@@ -66,7 +101,7 @@ export function buildTracks(
   const minSamples = opts.minSamples ?? 3;
   const byMmsi = new Map<number, ReplayRecord[]>();
 
-  for (const r of records) {
+  for (const r of dedupRecords(records)) {
     if (!Number.isFinite(r.lat) || !Number.isFinite(r.lon)) continue;
     const list = byMmsi.get(r.mmsi) ?? [];
     list.push(r);

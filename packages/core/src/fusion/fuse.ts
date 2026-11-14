@@ -5,6 +5,7 @@ import {
   type CheckResult,
   type TrustAssessment,
 } from '@northstar/contracts';
+import { VERIFIED_EVIDENCE_CLASSES } from './evidenceClass.js';
 
 export interface FusionConfig {
   version: string;
@@ -24,20 +25,41 @@ export interface FusionConfig {
     debounce_n: number;
     debounce_window_s: number;
     persist_s: number;
+    /**
+     * v2: count DISTINCT source_timestamp values per alert key within the window
+     * (a re-polled duplicate cannot confirm an alert). Absent/false = v1 behaviour
+     * (every evaluation counts).
+     */
+    debounce_distinct_observations?: boolean;
+    /** v2: alert-key prefixes confirmed on a single observation (n = 1). */
+    immediate_keys?: string[];
   };
   freshness_half_life_s: number;
   stale_after_s: number;
+  /**
+   * 'v1' (default when absent): max(maxAnomaly, 0.85·noisyOR) with weight-share terms.
+   * 'v2': q = reliability × freshness, w = weight / max(weight) ∈ [0,1],
+   *       anomaly = max( maxᵢ(sᵢ·qᵢ), 1 − Πᵢ(1 − sᵢ·qᵢ·wᵢ) ).
+   */
+  fusion_mode?: 'v1' | 'v2';
+}
+
+export interface FuseOptions {
+  /** source_timestamp of the observation being assessed (for distinct-observation debounce). */
+  observationTs?: string;
 }
 
 export interface HardAlertState {
   /** recent trigger timestamps per alert key */
   triggers: Map<string, number[]>;
+  /** v2: recent (assessedAt, observationTs) pairs per alert key */
+  observations?: Map<string, Array<{ at: number; obs: number }>>;
   /** active hard alerts with expiry */
   active: Map<string, number>;
 }
 
 export function createHardAlertState(): HardAlertState {
-  return { triggers: new Map(), active: new Map() };
+  return { triggers: new Map(), active: new Map(), observations: new Map() };
 }
 
 function isRunnable(c: CheckResult): boolean {
@@ -63,12 +85,16 @@ export function fuseTrust(
   config: FusionConfig,
   hardState: HardAlertState,
   assessedAt: string,
+  opts: FuseOptions = {},
 ): { assessment: TrustAssessment; hardState: HardAlertState } {
   const now = Date.parse(assessedAt);
   const nextHard: HardAlertState = {
     triggers: new Map(hardState.triggers),
     active: new Map(hardState.active),
+    observations: new Map(hardState.observations ?? []),
   };
+  const distinct = config.hard_alerts.debounce_distinct_observations === true;
+  const obsTs = opts.observationTs ? Date.parse(opts.observationTs) : now;
 
   // Expire old actives
   for (const [k, exp] of nextHard.active) {
@@ -81,8 +107,21 @@ export function fuseTrust(
     if (!c.hard_alert) continue;
     const key = `${c.check_id}:${c.evidence?.signature_status ?? c.status}`;
     hardKeys.push(key);
-    const arr = nextHard.triggers.get(key) ?? [];
     const windowMs = config.hard_alerts.debounce_window_s * 1000;
+    if (distinct) {
+      const prev = nextHard.observations!.get(key) ?? [];
+      const recent = [...prev.filter((o) => now - o.at <= windowMs), { at: now, obs: obsTs }];
+      nextHard.observations!.set(key, recent);
+      const distinctCount = new Set(recent.map((o) => o.obs)).size;
+      const immediate = (config.hard_alerts.immediate_keys ?? []).some((p) => key.startsWith(p));
+      const needed = immediate ? 1 : config.hard_alerts.debounce_n;
+      nextHard.triggers.set(key, recent.map((o) => o.at));
+      if (distinctCount >= needed) {
+        nextHard.active.set(key, now + config.hard_alerts.persist_s * 1000);
+      }
+      continue;
+    }
+    const arr = nextHard.triggers.get(key) ?? [];
     const recent = [...arr.filter((t) => now - t <= windowMs), now];
     nextHard.triggers.set(key, recent);
     if (recent.length >= config.hard_alerts.debounce_n) {
@@ -138,7 +177,27 @@ export function fuseTrust(
           return product * (1 - score * Math.min(1, item.weight / weightTotal));
         }, 1)
       : 0;
-  const anomaly = Math.max(maxAnomaly, noisyOr * 0.85);
+  let anomaly: number;
+  if (config.fusion_mode === 'v2') {
+    const maxWeight = Math.max(
+      1e-9,
+      ...Object.values(config.weights).filter((w) => Number.isFinite(w) && w > 0),
+    );
+    let maxTerm = 0;
+    let product = 1;
+    for (const c of anomalous) {
+      const s = Math.min(1, Math.max(0, c.anomaly_score ?? 0));
+      const q = Math.min(1, Math.max(0, c.reliability)) * Math.min(1, Math.max(0, c.freshness));
+      const configured = effectiveWeight.get(c.check_id) ?? config.weights[c.check_id] ?? 1;
+      const w = Math.min(1, Math.max(0, configured / maxWeight));
+      maxTerm = Math.max(maxTerm, s * q);
+      product *= 1 - s * q * w;
+    }
+    const combined = 1 - product;
+    anomaly = Math.max(maxTerm, combined);
+  } else {
+    anomaly = Math.max(maxAnomaly, noisyOr * 0.85);
+  }
   let trust = Math.round(100 * (1 - anomaly));
   const activeHard = [...nextHard.active.keys()];
   if (activeHard.length > 0) {
@@ -160,6 +219,19 @@ export function fuseTrust(
   }
   const coverage = covDen > 0 ? (100 * covNum) / covDen : 0;
 
+  // Verified coverage: identical formula but only live/recorded evidence counts.
+  let vNum = 0;
+  for (const id of config.expected_checks) {
+    const w = config.coverage_weights[id] ?? 1;
+    const c = checks.find((x) => x.check_id === id);
+    if (!c) continue;
+    if (c.status === 'unavailable' || c.status === 'unsupported') continue;
+    if (c.freshness <= 0) continue;
+    if (!c.evidence_class || !VERIFIED_EVIDENCE_CLASSES.has(c.evidence_class)) continue;
+    vNum += w * Math.min(1, c.freshness);
+  }
+  const verifiedCoverage = covDen > 0 ? (100 * vNum) / covDen : 0;
+
   const available = checks.filter((c) => c.status !== 'unavailable' && c.status !== 'unsupported')
     .length;
 
@@ -179,6 +251,7 @@ export function fuseTrust(
     trust_score: trust,
     trust_band: trustBandFromScore(trust),
     evidence_coverage: Math.round(coverage * 10) / 10,
+    verified_evidence_coverage: Math.round(verifiedCoverage * 10) / 10,
     coverage_band: coverageBandFromPct(coverage),
     available_checks: available,
     expected_checks: config.expected_checks.length,
@@ -207,6 +280,7 @@ export function emptyChecks(entityId: string, nowIso: string): CheckResult[] {
     'spatial_aoa',
     'signed_vs_ais',
     'fleet_coherence',
+    'identity',
   ];
   return ids.map((check_id) => ({
     entity_id: entityId,

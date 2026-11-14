@@ -1,13 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { FusionConfig } from '@northstar/core';
+import type {
+  FleetCoherenceV2Config,
+  FusionConfig,
+  IdentityConfig,
+  KinematicsCusumConfig,
+} from '@northstar/core';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(__dirname, '../../..');
 
 export function loadJson<T>(rel: string): T {
-  const path = join(REPO_ROOT, rel);
+  const path = rel.startsWith('/') ? rel : join(REPO_ROOT, rel);
   return JSON.parse(readFileSync(path, 'utf8')) as T;
 }
 
@@ -25,13 +30,40 @@ export interface ThresholdsConfig {
     uncertain_dt_skip: boolean;
     drift_cusum_threshold: number;
     drift_cusum_slack_m: number;
+    min_cog_sog_kn?: number;
+    prefer_rot_field?: boolean;
+    cusum?: KinematicsCusumConfig;
   };
   geographic: {
     shore_buffer_m: number;
     port_buffer_m: number;
     warning_inland_m: number;
     fail_inland_m: number;
+    distance_mode?: 'vertex' | 'edge';
+    use_hull_tolerance?: boolean;
+    default_hull_offset_m?: number;
+    default_accuracy_m?: number;
+    /** v2: geo dataset file names under data/geo (fallbacks used if missing). */
+    land_file?: string;
+    ports_file?: string;
+    fallback_land_file?: string;
+    fallback_ports_file?: string;
   };
+  /** v2: time/speed-aware fleet coherence. Absent = v1 algorithm. */
+  fleet_coherence?: FleetCoherenceV2Config;
+  /** v2: identity check settings. Absent = identity check reported unavailable. */
+  identity?: Omit<IdentityConfig, 'max_sog_kn'>;
+  /** v2: signed-vs-AIS with interpolation. */
+  signed_vs_ais?: { warn_m: number; fail_m: number; interp_window_s: number };
+  /** v2: ingest validation windows. */
+  validation?: {
+    ais_stale_after_s: number;
+    device_stale_after_s: number;
+    max_future_skew_s: number;
+    lab_stale_after_s: number;
+  };
+  /** v2: per-source kinematic state. */
+  state?: { per_source: boolean; ais_history: number };
   neighbors: {
     radius_nm: number;
     max_age_s: number;
@@ -125,10 +157,28 @@ export function loadEnv(): EnvConfig {
   };
 }
 
-export function loadFusion(): FusionConfig {
-  return loadJson<FusionConfig>('config/fusion.v1.json');
+/**
+ * Config selection. Default is v2; v1 stays selectable:
+ *   NORTHSTAR_FUSION=v1|v2|<path>   NORTHSTAR_THRESHOLDS=v1|v2|<path>
+ */
+function resolveConfigPath(kind: 'fusion' | 'thresholds', value: string | undefined): string {
+  const v = (value ?? 'v2').trim();
+  if (v === 'v1' || v === 'v2') return `config/${kind}.${v}.json`;
+  return v;
 }
 
-export function loadThresholds(): ThresholdsConfig {
-  return loadJson<ThresholdsConfig>('config/thresholds.v1.json');
+export function loadFusion(which = process.env.NORTHSTAR_FUSION): FusionConfig {
+  return loadJson<FusionConfig>(resolveConfigPath('fusion', which));
+}
+
+export function loadThresholds(which = process.env.NORTHSTAR_THRESHOLDS): ThresholdsConfig {
+  return loadJson<ThresholdsConfig>(resolveConfigPath('thresholds', which));
+}
+
+/** Runtime data dir (P1.5). Default .northstar/data; legacy mode keeps data/fixtures. */
+export function runtimeDataDir(): string | null {
+  if (process.env.NORTHSTAR_LEGACY_DATA_PATHS === 'true') return null;
+  const raw = process.env.NORTHSTAR_DATA_DIR ?? '.northstar/data';
+  const expanded = raw.replace(/^~/, process.env.HOME ?? '');
+  return expanded.startsWith('/') ? expanded : join(REPO_ROOT, expanded);
 }

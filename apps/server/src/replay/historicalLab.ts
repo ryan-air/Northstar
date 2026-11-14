@@ -6,6 +6,7 @@ import type {
   ScenarioId,
   VesselClass,
 } from '@northstar/contracts';
+import type { ReplayRecord } from './types.js';
 import {
   buildTracks,
   enrichNames,
@@ -34,12 +35,28 @@ export interface LabScenarioState {
 
 interface VesselPlayhead {
   track: VesselTrack;
+  /** Shared-timeline mode: index of the first sample strictly after the lab clock. */
+  nextIdx: number;
   /** ms into the track (loops) */
-  cursorMs: number;
+  playheadMs: number;
   sequence: number;
   lastLat: number;
   lastLon: number;
   lastSog: number;
+}
+
+export interface LabTickResult {
+  aisA: PositionEvent[];
+  aisB: PositionEvent[];
+  imu: ImuSample[];
+  gnss: GnssDiagnostics[];
+  simTimeIso: string;
+  /** True when the shared timeline looped this tick (caller must clear Lab state). */
+  wrapped: boolean;
+}
+
+function sampleTs(s: { timestamp_external_ms: number | null; captured_at: string }): number {
+  return s.timestamp_external_ms ?? Date.parse(s.captured_at);
 }
 
 /**
@@ -58,10 +75,32 @@ export class HistoricalLab {
   sourceLabel = 'digitraffic_historical_replay';
   /** Protocol-demo OSNMA status mirrored onto Hist Lab events (not live SIS). */
   protocolOsnmaStatus: OsnmaStatus = 'unavailable';
+  /**
+   * P3.3: all vessels share one absolute replay clock and emit only their real samples
+   * (interpolation only across gaps ≤ maxInterpGapMs, tagged). Set
+   * NORTHSTAR_LAB_LEGACY_PLAYHEAD=true for the old per-vessel looping playheads.
+   */
+  readonly legacyPlayhead = process.env.NORTHSTAR_LAB_LEGACY_PLAYHEAD === 'true';
+  maxInterpGapMs = 180_000;
+  /** Shared timeline bounds. */
+  timelineStartMs = 0;
+  timelineEndMs = 0;
+  /** Where the clock (re)starts — the instant with the most simultaneously active tracks. */
+  timelineSeedMs = 0;
+  wraps = 0;
+  /** Drift rate for the gradual_drift overlay in shared mode (m/s of replay time). */
+  driftMps = Number(process.env.NORTHSTAR_LAB_DRIFT_MPS ?? 1);
 
   constructor(startIso = new Date().toISOString()) {
     this.simTimeMs = Date.parse(startIso);
     this.scenario = this.normalScenario('LAB-0');
+  }
+
+  /** Lab-return vessel (recorded AIS) that becomes the full-stack ship; set before init(). */
+  private extraTrackRecords: ReplayRecord[] | null = null;
+  forcedSignedEntityId: string | null = null;
+  setLabTrack(records: ReplayRecord[]): void {
+    this.extraTrackRecords = records.length >= 3 ? records : null;
   }
 
   async init(): Promise<{ ok: boolean; reason: string; vesselCount: number }> {
@@ -76,6 +115,15 @@ export class HistoricalLab {
       };
     }
     const tracks = buildTracks(records, { maxVessels: 24, minSamples: 3 });
+    if (this.extraTrackRecords) {
+      const extra = buildTracks(this.extraTrackRecords, { maxVessels: 1, minSamples: 3 })[0];
+      if (extra) {
+        const i = tracks.findIndex((x) => x.mmsi === extra.mmsi);
+        if (i >= 0) tracks.splice(i, 1);
+        tracks.unshift(extra);
+        this.forcedSignedEntityId = extra.entity_id;
+      }
+    }
     await enrichNames(tracks);
     if (tracks.length === 0) {
       this.ready = false;
@@ -93,21 +141,23 @@ export class HistoricalLab {
       const s0 = track.samples[0]!;
       return {
         track,
-        cursorMs: 0,
+        nextIdx: 0,
+        playheadMs: 0,
         sequence: 1,
         lastLat: s0.lat,
         lastLon: s0.lon,
         lastSog: typeof s0.sog === 'number' ? s0.sog : 0,
       };
     });
-    this.signedEntityId = moving.entity_id;
-    this.scenario = this.normalScenario(moving.entity_id);
+    this.signedEntityId = this.forcedSignedEntityId ?? moving.entity_id;
+    this.scenario = this.normalScenario(this.signedEntityId);
     this.ready = true;
     // Align lab clock to first sample time for honesty in UI
     const t0 =
       moving.samples[0]!.timestamp_external_ms ??
       Date.parse(moving.samples[0]!.captured_at);
     this.simTimeMs = t0;
+    if (!this.legacyPlayhead) this.initSharedTimeline();
     return { ok: true, reason: 'historical Digitraffic replay ready', vesselCount: tracks.length };
   }
 
@@ -157,9 +207,119 @@ export class HistoricalLab {
     }
   }
 
-  resetPlayheads(): void {
+  private initSharedTimeline(): void {
+    const spans = this.vessels.map((v) => ({
+      a: sampleTs(v.track.samples[0]!),
+      b: sampleTs(v.track.samples[v.track.samples.length - 1]!),
+    }));
+    this.timelineStartMs = Math.min(...spans.map((x) => x.a));
+    this.timelineEndMs = Math.max(...spans.map((x) => x.b));
+    // Seed: the instant where the most tracks have a real sample within ±90 s
+    // (densely active, so the first ticks show real positions, not gaps).
+    const times = this.vessels.map((v) => v.track.samples.map(sampleTs));
+    const candidates = times.flat().sort((a, b) => a - b);
+    const stride = Math.max(1, Math.floor(candidates.length / 400));
+    const near = (ts: number[], t: number, w: number) => {
+      let lo = 0;
+      let hi = ts.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (ts[mid]! < t - w) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo < ts.length && ts[lo]! <= t + w;
+    };
+    let bestT = this.timelineStartMs;
+    let best = -1;
+    for (let i = 0; i < candidates.length; i += stride) {
+      const t = candidates[i]!;
+      const n = times.filter((ts) => near(ts, t, 90_000)).length;
+      if (n > best) {
+        best = n;
+        bestT = t;
+      }
+    }
+    // Start slightly before the seed so the first ticks emit the samples around it.
+    this.timelineSeedMs = Math.max(this.timelineStartMs, bestT - 30_000);
+    // A lab-return vessel is the full-stack ship: start the clock at its first report.
+    const forced = this.forcedSignedEntityId
+      ? this.vessels.find((v) => v.track.entity_id === this.forcedSignedEntityId)
+      : undefined;
+    if (forced) {
+      this.timelineSeedMs = Math.max(this.timelineStartMs, sampleTs(forced.track.samples[0]!) - 30_000);
+      this.seekShared(this.timelineSeedMs);
+      this.signedEntityId = forced.track.entity_id;
+      this.scenario = this.normalScenario(forced.track.entity_id);
+      return;
+    }
+    this.seekShared(this.timelineSeedMs);
+
+    // Re-pick the signed full-stack vessel: the moving track with the most samples in
+    // the 10 minutes after the seed (so signed-vs-AIS has AIS to compare against).
+    let bestTrack: VesselPlayhead | null = null;
+    let bestCount = 0;
     for (const v of this.vessels) {
-      v.cursorMs = 0;
+      const n = v.track.samples.filter((smp) => {
+        const t = sampleTs(smp);
+        return t >= this.timelineSeedMs && t <= this.timelineSeedMs + 600_000 && (smp.sog ?? 0) > 0.5;
+      }).length;
+      if (n > bestCount) {
+        bestCount = n;
+        bestTrack = v;
+      }
+    }
+    if (bestTrack) {
+      this.signedEntityId = bestTrack.track.entity_id;
+      this.scenario = this.normalScenario(bestTrack.track.entity_id);
+    }
+  }
+
+  /**
+   * Each vessel's most recent real recorded report at or before tMs (within maxAgeMs), as
+   * events stamped with their own report time. Used after a clock jump so ships reappear at
+   * once instead of waiting for their next report; nothing is interpolated or invented.
+   */
+  lastReportsBefore(tMs: number, maxAgeMs: number): PositionEvent[] {
+    const out: PositionEvent[] = [];
+    for (const v of this.vessels) {
+      const ss = v.track.samples;
+      let best: (typeof ss)[number] | null = null;
+      for (const s of ss) {
+        const ts = sampleTs(s);
+        if (ts > tMs) break;
+        best = s;
+      }
+      if (best && tMs - sampleTs(best) <= maxAgeMs) out.push(this.emitSample(v, best, sampleTs(best), false));
+    }
+    return out;
+  }
+
+  /** Move the shared Lab clock (clamped to the timeline); returns the time actually set. */
+  seek(tMs: number): number {
+    const t = Math.min(Math.max(tMs, this.timelineStartMs), this.timelineEndMs);
+    this.seekShared(t);
+    return t;
+  }
+
+  private seekShared(tMs: number): void {
+    this.simTimeMs = tMs;
+    for (const v of this.vessels) {
+      const ss = v.track.samples;
+      let i = 0;
+      while (i < ss.length && sampleTs(ss[i]!) <= tMs) i++;
+      v.nextIdx = i;
+    }
+  }
+
+  resetPlayheads(): void {
+    if (!this.legacyPlayhead && this.vessels.length > 0) {
+      this.tickCount = 0;
+      this.seekShared(this.timelineSeedMs);
+      for (const v of this.vessels) v.sequence = 1;
+      return;
+    }
+    for (const v of this.vessels) {
+      v.playheadMs = 0;
       const s0 = v.track.samples[0]!;
       v.lastLat = s0.lat;
       v.lastLon = s0.lon;
@@ -174,13 +334,152 @@ export class HistoricalLab {
     }
   }
 
-  tick(dtS = 1): {
-    aisA: PositionEvent[];
-    aisB: PositionEvent[];
-    imu: ImuSample[];
-    gnss: GnssDiagnostics[];
-    simTimeIso: string;
-  } {
+  tick(dtS = 1): LabTickResult {
+    if (!this.legacyPlayhead && this.vessels.length > 0) return this.tickShared(dtS);
+    return this.tickLegacy(dtS);
+  }
+
+  /** P3.3 shared absolute timeline. */
+  private tickShared(dtS: number): LabTickResult {
+    const stepMs = dtS * 1000 * this.speed;
+    const prevClock = this.simTimeMs;
+    let clock = prevClock + stepMs;
+    let wrapped = false;
+    if (clock > this.timelineEndMs) {
+      // Loop: restart the timeline; the app clears Lab entities + hard-alert state.
+      wrapped = true;
+      this.wraps += 1;
+      this.seekShared(this.timelineStartMs);
+      clock = this.timelineStartMs;
+    }
+    this.simTimeMs = clock;
+    this.tickCount += 1;
+    const simTimeIso = new Date(clock).toISOString();
+    const aisA: PositionEvent[] = [];
+    const imu: ImuSample[] = [];
+    const gnss: GnssDiagnostics[] = [];
+    if (this.scenario.id === 'gradual_drift') {
+      this.scenario.driftMeters += this.driftMps * dtS * this.speed;
+    }
+
+    for (const v of this.vessels) {
+      const ss = v.track.samples;
+      const emitted: Array<{ s: VesselTrack['samples'][number]; ts: number; interpolated: boolean }> = [];
+      if (!wrapped) {
+        while (v.nextIdx < ss.length && sampleTs(ss[v.nextIdx]!) <= clock) {
+          const smp = ss[v.nextIdx]!;
+          emitted.push({ s: smp, ts: sampleTs(smp), interpolated: false });
+          v.nextIdx += 1;
+        }
+      }
+      if (emitted.length === 0) {
+        const a = ss[v.nextIdx - 1];
+        const b = ss[v.nextIdx];
+        if (a && b) {
+          const ta = sampleTs(a);
+          const tb = sampleTs(b);
+          if (tb - ta <= this.maxInterpGapMs && tb > ta) {
+            const u = Math.min(1, Math.max(0, (clock - ta) / (tb - ta)));
+            emitted.push({
+              s: {
+                ...a,
+                lat: a.lat + (b.lat - a.lat) * u,
+                lon: a.lon + (b.lon - a.lon) * u,
+                sog:
+                  typeof a.sog === 'number' && typeof b.sog === 'number'
+                    ? a.sog + (b.sog - a.sog) * u
+                    : a.sog,
+              },
+              ts: clock,
+              interpolated: true,
+            });
+          }
+        }
+      }
+      // Bound per-tick burst (high playback speeds) to the latest few real samples.
+      for (const em of emitted.slice(-3)) {
+        const ev = this.emitSample(v, em.s, em.ts, em.interpolated);
+        aisA.push(ev);
+        imu.push({
+          entity_id: v.track.entity_id,
+          device_id: v.track.entity_id === this.signedEntityId ? 'DEV-VESSEL-001' : undefined,
+          observed_at: ev.source_timestamp,
+          accel_mps2: [((ev.speed_over_ground_knots ?? v.lastSog) - v.lastSog) * 0.05, 0, 0],
+          gyro_rads: [0, 0, 0],
+          labels: { simulated: true, fixture: true },
+        });
+        gnss.push({
+          ...gnssFixture('nominal', v.track.entity_id, simTimeIso),
+          labels: { simulated: true, fixture: true },
+        });
+        v.lastSog = ev.speed_over_ground_knots ?? v.lastSog;
+        v.lastLat = em.s.lat;
+        v.lastLon = em.s.lon;
+      }
+    }
+    return { aisA, aisB: [], imu, gnss, simTimeIso, wrapped };
+  }
+
+  private emitSample(
+    v: VesselPlayhead,
+    smp: VesselTrack['samples'][number],
+    tsMs: number,
+    interpolated: boolean,
+  ): PositionEvent {
+    v.sequence += 1;
+    let reported = { lat: smp.lat, lon: smp.lon };
+    const isTarget = v.track.entity_id === this.scenario.targetId;
+    if (isTarget) {
+      if (this.scenario.spoofLat != null && this.scenario.spoofLon != null) {
+        reported = { lat: this.scenario.spoofLat, lon: this.scenario.spoofLon };
+      } else if (this.scenario.driftMeters > 0) {
+        reported = { lat: smp.lat + this.scenario.driftMeters / 111_320, lon: smp.lon };
+      }
+    }
+    const sog = typeof smp.sog === 'number' && smp.sog < 102.25 ? smp.sog : null;
+    const cog = typeof smp.cog === 'number' && smp.cog < 360 ? smp.cog : null;
+    const heading =
+      typeof smp.heading === 'number' && smp.heading >= 0 && smp.heading < 360 ? smp.heading : null;
+    // P3.5: stale_clock_skew shifts the target's timestamps back 10 min → rejected at ingest.
+    const ts = isTarget && this.scenario.staleClock ? tsMs - 10 * 60_000 : tsMs;
+    const ev = this.toEvent(
+      v,
+      reported,
+      sog ?? 0,
+      cog,
+      heading,
+      'ais_provider_a',
+      'digitraffic_historical',
+      new Date(ts).toISOString(),
+      false,
+    );
+    ev.speed_over_ground_knots = sog;
+    ev.quality = {
+      position_accuracy_m: smp.posAcc === true ? 10 : smp.posAcc === false ? 50 : null,
+      signal_quality_available: false,
+    };
+    ev.nav_status = typeof smp.navStat === 'number' && smp.navStat >= 0 && smp.navStat <= 15 ? smp.navStat : null;
+    ev.raim = typeof smp.raim === 'boolean' ? smp.raim : null;
+    ev.ais_utc_second =
+      typeof smp.ais_timestamp_s === 'number' && smp.ais_timestamp_s >= 0 && smp.ais_timestamp_s <= 59
+        ? smp.ais_timestamp_s
+        : null;
+    ev.epfd_type = typeof smp.posType === 'number' ? smp.posType : null;
+    const ra = smp.referencePointA;
+    const rb = smp.referencePointB;
+    const rc = smp.referencePointC;
+    const rd = smp.referencePointD;
+    ev.dimensions_m =
+      [ra, rb, rc, rd].every((x) => typeof x === 'number' && x >= 0) && (ra! + rb! + rc! + rd!) > 0
+        ? { a: ra!, b: rb!, c: rc!, d: rd! }
+        : null;
+    if (interpolated) ev.interpolated = true;
+    if (smp.callSign) ev.labels = { ...ev.labels, call_sign: smp.callSign };
+    if (smp.imo) ev.labels = { ...ev.labels, imo: smp.imo };
+    return ev;
+  }
+
+  private tickLegacy(dtS = 1): LabTickResult {
     // Advance the lab clock with playback speed so kinematics sees consistent Δt vs Δs
     const stepMs = dtS * 1000 * this.speed;
     this.simTimeMs += stepMs;
@@ -196,8 +495,8 @@ export class HistoricalLab {
     }
 
     for (const v of this.vessels) {
-      v.cursorMs = (v.cursorMs + stepMs) % v.track.durationMs;
-      const sample = this.sampleAt(v.track, v.cursorMs);
+      v.playheadMs = (v.playheadMs + stepMs) % v.track.durationMs;
+      const sample = this.sampleAt(v.track, v.playheadMs);
       const truePos = { lat: sample.lat, lon: sample.lon };
       v.sequence += 1;
 
@@ -263,14 +562,14 @@ export class HistoricalLab {
       v.lastSog = sog;
     }
 
-    return { aisA, aisB, imu, gnss, simTimeIso };
+    return { aisA, aisB, imu, gnss, simTimeIso, wrapped: false };
   }
 
-  private sampleAt(track: VesselTrack, cursorMs: number): VesselTrack['samples'][number] {
+  private sampleAt(track: VesselTrack, playheadMs: number): VesselTrack['samples'][number] {
     const samples = track.samples;
     const t0 =
       samples[0]!.timestamp_external_ms ?? Date.parse(samples[0]!.captured_at);
-    const target = t0 + cursorMs;
+    const target = t0 + playheadMs;
     let lo = 0;
     let hi = samples.length - 1;
     while (lo < hi) {
@@ -349,8 +648,12 @@ export class HistoricalLab {
       signed_entity_id: this.signedEntityId,
       speed: this.speed,
       manifest: this.manifest,
+      timeline: this.legacyPlayhead
+        ? 'legacy_per_vessel_playhead'
+        : 'shared_absolute_clock',
+      wraps: this.wraps,
       note: this.ready
-        ? `Lab positions are recorded Digitraffic AIS (historical replay). Attack overlays are synthetic. OSNMA: ${this.protocolOsnmaStatus === 'authenticated' ? 'ICD protocol demo (shared nav-data auth)' : this.protocolOsnmaStatus}. GNSS/IMU are fixtures/reconstructed — not ship black-box tapes.`
+        ? `Lab positions are recorded Digitraffic AIS (historical replay). Attacks are injected only into the simulated ships. OSNMA: ${this.protocolOsnmaStatus === 'authenticated' ? 'ICD test vector (shared nav-data auth)' : this.protocolOsnmaStatus}. Other recorded ships carry reconstructed GNSS/IMU; the lab vessel carries its own recorded sensors.`
         : 'Waiting for Digitraffic recording cache.',
       osnma_protocol_status: this.protocolOsnmaStatus,
     };

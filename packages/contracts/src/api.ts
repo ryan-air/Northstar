@@ -133,6 +133,14 @@ export const AppSnapshotSchema = z.object({
   alerts: z.array(AlertEventSchema),
   timeline: z.array(AlertEventSchema),
   selected_entity_id: z.string().nullable().optional(),
+  /** Attack-injection policy: attacks only ever go to these simulated ships. */
+  injection: z
+    .object({
+      policy: z.literal('simulated_only'),
+      simulated_ships: z.array(z.string()),
+      lab_vessel_id: z.string().nullable(),
+    })
+    .optional(),
 });
 export type AppSnapshot = z.infer<typeof AppSnapshotSchema>;
 

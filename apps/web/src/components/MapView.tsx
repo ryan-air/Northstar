@@ -24,10 +24,10 @@ const ONLINE_STYLE =
   'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 const BAND_COLOR: Record<TrustBand, string> = {
-  high: '#3ecf8e',
-  caution: '#d4a017',
-  suspicious: '#e07a3d',
-  critical: '#e05252',
+  high: '#3fd08f',
+  caution: '#e6a73c',
+  suspicious: '#e8833f',
+  critical: '#ee5a5a',
 };
 
 /** Stable empty array — `?? []` inside a Zustand selector creates a new ref every call and infinite-loops React. */
@@ -43,7 +43,7 @@ function offlineStyle(): StyleSpecification {
       {
         id: 'bg',
         type: 'background',
-        paint: { 'background-color': '#0d1c28' },
+        paint: { 'background-color': '#12355a' },
       },
     ],
   };
@@ -62,9 +62,9 @@ function vesselsToGeoJSON(vessels: VesselState[]) {
           band: v.trust.trust_band,
           // Live vessels: cyan ring via stroke; fill still trust color
           color: BAND_COLOR[v.trust.trust_band],
-          stroke: live ? '#4ec4f0' : '#0b1014',
-          strokeWidth: live ? 2.5 : 2,
-          radius: live ? 6 : 7,
+          stroke: live ? '#6fb3cc' : '#101820',
+          strokeWidth: live ? 1.5 : 1.5,
+          radius: live ? 5 : 6,
           origin: live ? 'live' : 'lab',
           heading: v.heading_deg ?? v.course_over_ground_deg ?? 0,
           score: v.trust.trust_score,
@@ -88,7 +88,11 @@ function tracksToGeoJSON(vessels: VesselState[]) {
           type: 'Feature' as const,
           properties: {
             id: v.entity_id,
-            color: BAND_COLOR[v.trust.trust_band],
+            // Legitimate tracks in muted steel; only suspicious/critical tracks take colour.
+            color:
+              v.trust.trust_band === 'critical' || v.trust.trust_band === 'suspicious'
+                ? BAND_COLOR[v.trust.trust_band]
+                : '#5f8fae',
           },
           geometry: {
             type: 'LineString' as const,
@@ -153,6 +157,15 @@ export function MapView() {
       mapRef.current = map;
 
       map.on('load', async () => {
+        // Ocean navy water (the online CARTO dark basemap paints near-black water).
+        try {
+          for (const l of map.getStyle().layers ?? []) {
+            if (l.type === 'background') map.setPaintProperty(l.id, 'background-color', '#0d2742');
+            else if (l.type === 'fill' && /water|ocean|sea/i.test(l.id)) map.setPaintProperty(l.id, 'fill-color', '#12355a');
+          }
+        } catch {
+          /* style without those layers */
+        }
         if (cancelled) return;
         const ensureSource = (id: string, data: GeoJSON.GeoJSON | GeoJSON.FeatureCollection) => {
           if (map.getSource(id)) {
@@ -181,31 +194,32 @@ export function MapView() {
           id: 'land-fill',
           type: 'fill',
           source: 'land',
-          paint: { 'fill-color': '#1a3a2a', 'fill-opacity': 0.55 },
+          paint: { 'fill-color': '#1d3330', 'fill-opacity': 0.9 },
         });
         addLayerOnce({
           id: 'land-line',
           type: 'line',
           source: 'land',
-          paint: { 'line-color': '#2f6b4f', 'line-width': 1 },
+          // The coastline GeoJSON is cut into 0.1° tiles; the faint outline doubles as a chart grid.
+          paint: { 'line-color': '#2f8a63', 'line-width': 0.8, 'line-opacity': 0.7 },
         });
         addLayerOnce({
           id: 'ports-fill',
           type: 'fill',
           source: 'ports',
-          paint: { 'fill-color': '#3a4a20', 'fill-opacity': 0.35 },
+          paint: { 'fill-color': '#2c4a63', 'fill-opacity': 0.55 },
         });
         addLayerOnce({
           id: 'lanes-line',
           type: 'line',
           source: 'lanes',
-          paint: { 'line-color': '#4a90c8', 'line-width': 1.5, 'line-dasharray': [2, 2] },
+          paint: { 'line-color': '#4f8fb8', 'line-width': 1, 'line-opacity': 0.75, 'line-dasharray': [3, 3] },
         });
         addLayerOnce({
           id: 'restricted-fill',
           type: 'fill',
           source: 'restricted',
-          paint: { 'fill-color': '#8b2e2e', 'fill-opacity': 0.35 },
+          paint: { 'fill-color': '#9a3a3a', 'fill-opacity': 0.28 },
         });
 
         // OpenSeaMap seamarks when online
@@ -223,7 +237,7 @@ export function MapView() {
               id: 'seamark',
               type: 'raster',
               source: 'seamark',
-              paint: { 'raster-opacity': 0.85 },
+              paint: { 'raster-opacity': 0.6 },
             });
           } catch {
             /* optional */
@@ -238,8 +252,8 @@ export function MapView() {
           filter: ['==', ['geometry-type'], 'LineString'],
           paint: {
             'line-color': ['get', 'color'],
-            'line-width': 2,
-            'line-opacity': 0.7,
+            'line-width': 1.6,
+            'line-opacity': 0.75,
           },
         });
         addLayerOnce({
@@ -248,9 +262,9 @@ export function MapView() {
           source: 'tracks',
           filter: ['==', ['get', 'anomalous'], true],
           paint: {
-            'circle-radius': 5,
-            'circle-color': '#e05252',
-            'circle-stroke-color': '#fff',
+            'circle-radius': 3.5,
+            'circle-color': '#dc5555',
+            'circle-stroke-color': '#101820',
             'circle-stroke-width': 1,
           },
         });
@@ -263,8 +277,8 @@ export function MapView() {
           paint: {
             'circle-radius': ['coalesce', ['get', 'radius'], 7],
             'circle-color': ['get', 'color'],
-            'circle-stroke-width': ['coalesce', ['get', 'strokeWidth'], 2],
-            'circle-stroke-color': ['coalesce', ['get', 'stroke'], '#0b1014'],
+            'circle-stroke-width': ['coalesce', ['get', 'strokeWidth'], 1.5],
+            'circle-stroke-color': ['coalesce', ['get', 'stroke'], '#101820'],
           },
         });
         addLayerOnce({
@@ -273,11 +287,31 @@ export function MapView() {
           source: 'vessels',
           layout: {
             'text-field': ['get', 'name'],
-            'text-size': 11,
-            'text-offset': [0, 1.2],
+            'text-size': 10,
+            'text-offset': [0, 1.1],
             'text-anchor': 'top',
+            'text-optional': true,
           },
-          paint: { 'text-color': '#c5d4e0', 'text-halo-color': '#0b1014', 'text-halo-width': 1 },
+          paint: {
+            'text-color': '#b9c8d3',
+            'text-halo-color': '#101820',
+            'text-halo-width': 1.2,
+            // Labels fade in as you zoom; at fleet scale they would bury the map.
+            'text-opacity': ['interpolate', ['linear'], ['zoom'], 7.5, 0, 8.5, 1],
+          },
+        });
+        // Selected vessel: a thin accent ring, no glow.
+        addLayerOnce({
+          id: 'vessels-selected',
+          type: 'circle',
+          source: 'vessels',
+          filter: ['==', ['get', 'id'], useStore.getState().selectedId ?? ''],
+          paint: {
+            'circle-radius': 11,
+            'circle-color': 'rgba(0,0,0,0)',
+            'circle-stroke-color': '#36bfc0',
+            'circle-stroke-width': 1.5,
+          },
         });
 
         map.on('click', 'vessels-circle', (e: MapLayerMouseEvent) => {
@@ -322,6 +356,9 @@ export function MapView() {
   // not a per-tick pull. Reads latest positions from the store at fire time.
   useEffect(() => {
     const map = mapRef.current;
+    if (map?.getLayer('vessels-selected')) {
+      map.setFilter('vessels-selected', ['==', ['get', 'id'], selectedId ?? '']);
+    }
     if (!map || !selectedId) return;
     const selected = useStore
       .getState()
@@ -368,7 +405,7 @@ export function MapView() {
             <span className="dot live" /> Live AIS (Digitraffic)
           </div>
           <div className="row">
-            <span className="dot lab" /> Hist Lab (recorded AIS)
+            <span className="dot lab" /> Lab (recorded + simulated)
           </div>
           <div className="row muted" style={{ marginTop: 4 }}>
             Cyan ring = live · amber = replay

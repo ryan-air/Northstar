@@ -1,64 +1,72 @@
 # Northstar — Security
 
-## Cyber console (hackathon)
+Northstar's job is to judge whether navigation data can be trusted, so its own inputs, records and controls have to be trustworthy too. This document lists the controls that are actually implemented, how to see them, and what is still out of scope. See [THREAT_MODEL.md](THREAT_MODEL.md) for the adversary-by-adversary view.
 
-UI tab **Cyber** + APIs:
+## Seeing the controls
 
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/security/threat-model` | Adversary → control mapping |
-| `GET /api/security/summary` | Devices, forensics, audit, OSNMA |
-| `GET /api/security/events` | Cryptographic forensics ring buffer |
-| `POST /api/osnma/verify` | Run OSNMAlib on ICD `configuration_1` (or MAC-fail demo) |
-| `POST /api/devices/:id/rotate` | Ed25519 key rotation |
-| `POST /api/devices/:id/revoke` | Revoke device (signatures fail closed) |
-| `GET /api/challenge/:deviceId` | Freshness challenge nonce |
-| `GET /api/audit/verify` | Recompute SHA-256 hash chain |
+The dashboard's **Security** tab (right panel) shows them live:
 
-## Threat model (hackathon scope)
+| Section | What it does |
+|---|---|
+| Record integrity | Recomputes the SHA-256 audit hash chain and checks the shore-signed checkpoint (`GET /api/audit/verify`) |
+| Device identity | Enrolled devices, the vessel each is bound to, key algorithm, status, revoked-key count |
+| Freshness test | Sends a correctly signed message without the one-time challenge; it must be rejected (`POST /api/demo/challenge-miss`) |
+| Recent security events | Rejections and failures from the forensics log (`GET /api/security/events`); routine verifications summarised |
+| Controls in place | Live list from `GET /api/security/summary` |
 
-| Threat | Mitigation |
-|--------|------------|
-| Tampered device telemetry | Ed25519 over RFC 8785 JCS canonical bytes + forensics |
-| Replay of old valid messages | Seq + freshness + payload-hash LRU + optional challenge nonce |
-| Spoofed public AIS | Never ground truth; cross-feed + kinematics + geo |
-| Galileo nav-data forgery | OSNMAlib ICD vectors (TESLA delayed MAC + KROOT) |
-| Audit rewriting | SHA-256 `prev_hash` chain + `/api/audit/verify` |
-| Key compromise | Rotate / revoke APIs; assurance labelled **software** |
-| Operator over-trust of score | UI disclaimer; score ≠ probability; coverage separate |
-| Secrets in git | Keys in `./.northstar/keys` (gitignored); certs in `./certs` |
+## Controls
 
-## Device identity
+### Signed onboard telemetry
+- Ed25519 (software) or ECDSA P-256 (PKCS#11 / YubiKey) over RFC 8785 canonical JSON.
+- Each device is bound to one vessel and one key; the envelope's algorithm must match the enrolment.
+- A valid signature proves who signed the data and that it was not modified. It does **not** prove the measured position is physically true; that is what the independent-evidence checks are for.
+- Forged, tampered or unbound telemetry never updates a vessel; it is logged to forensics only.
 
-- Ed25519 via `@noble/ed25519`
-- Enrollment / rotation / revocation in `DeviceRegistry`
-- Assurance level default: **software** (see BLOCKERS B4)
-- Private keys never committed
+### Replay and freshness
+- Monotonic per-device sequence numbers, timestamp freshness and a payload-hash cache.
+- One-time server challenge nonces (required by default); a message without a valid challenge is rejected.
+- The device keeps its sequence counter across restarts, as a real device would.
 
-A valid signature proves the holder of the device key signed the payload and it was not modified after signing. It does **not** prove the sensor measurement is physically true.
+### Enrolment and keys
+- Enrolment needs an admin token or an enrolment token. **One-time, per-vessel, expiring enrolment tokens** (`POST /api/devices/enrol-tokens`) are stored only as hashes. The shared enrolment token works only on a loopback bind.
+- One active device per vessel unless an admin explicitly replaces it.
+- Key rotation and revocation, with a shore-signed revocation list. Revocation is not exposed in the dashboard, so a live demo cannot be broken by accident.
+- Private keys are generated locally under `.northstar/` (gitignored) and never leave the device side.
 
-## Transport
+### Access control
+- **Scoped admin tokens** (`NORTHSTAR_ADMIN_TOKENS`): scenario, rf, osnma, audit, devices, demo. Wrong scope → 403, unknown token → 401, both logged.
+- Constant-time token comparison; only SHA-256 digests are kept in memory.
+- Without `NORTHSTAR_ADMIN_TOKEN` the demo token works **only on a loopback bind**; on any network address the server refuses to start.
+- Optional dashboard WebSocket token (`NORTHSTAR_WS_TOKEN`); CORS allowlist; rate limits on write and telemetry routes.
 
-- Optional TLS (`NORTHSTAR_TLS_ENABLED`) and mTLS for device ingest
-- `scripts/gen-certs.sh` creates a local demo CA
-- TLS protects the connection; message signatures protect integrity across storage/forwarding
-- Write endpoints rate-limited
+### Transport
+- TLS / mutual-TLS device server (`NORTHSTAR_TLS_ENABLED`, `NORTHSTAR_MTLS_ENABLED`, local CA via `scripts/gen-certs.sh`).
+- Plain-HTTP telemetry is **refused on non-loopback binds**.
 
-## OSNMA
+### Tamper-evident records
+- Every security-relevant event (enrolments, signature outcomes, replays, key operations, scenario changes, Lab jumps/resets) is appended to a SHA-256 `prev_hash` chain with a shore-signed tip checkpoint. Any edit or deletion breaks verification and the log fails closed.
 
-OSNMA authenticates supported Galileo **navigation-message data**, not receiver pseudoranges or the final PVT.
+### Input validation
+- All AIS is validated before use: schema, AIS "not available" sentinels, stale and future timestamps, duplicates and out-of-order reports.
+- Seeded fuzzing of every untrusted-input boundary runs in CI (`npm run fuzz`): AIS ingest, signed-telemetry verification (a tampered envelope never verifies), canonical JSON, the AIS adapters, the lab loaders and map simplification. It found and fixed a type-confusion bug on untrusted AISStream fields.
+- CI also runs `npm audit` and publishes a CycloneDX SBOM (`npm run sbom`).
 
-- Live SIS: **Not connected**
-- Protocol path: **OSNMAlib** on official ICD test vectors (`vendor/OSNMA`, `npm run setup:osnma`)
-- Results cached at `data/fixtures/osnma_icd_cache.json` after first successful verify
+### Honest evidence
+- Every check carries an evidence class: `live`, `recorded`, `simulated` or synthetic. **Verified coverage** counts only live and recorded evidence.
+- Attacks are injected **only into simulated ships**; recorded and live vessels never receive injected data. There is no override.
+- Synthetic inputs (the lab vessel's attestation chain and OSNMA results) are verified where possible (the attestation chain and enrolment signature are checked cryptographically) but always labelled synthetic.
 
-## Audit
+## Data handling
 
-Hash-chained JSONL at `data/fixtures/audit.jsonl` for enrollments, signature outcomes, replays, key ops, OSNMA, scenario changes.
+- Lab vessel sensor data was **received from a lab at UIUC after we reached out on Friday**. It is private: kept in local, gitignored folders, never committed, and not redistributed.
+- Recorded AIS used for evaluation is also kept out of the repository; data files were removed from the public git history.
+- The repository runs without any private data (simulated fleet + live AIS).
+- The real-time AIS client identifies itself only with a generic client name.
 
-## Production gaps (explicit)
+## Out of scope / known gaps
 
-- Software keys only; no secure boot / TPM binding
-- Dashboard has no production IAM/authz
-- Local demo CA only
-- Map tiles third-party when online
+- Software device keys by default; hardware attestation for the lab vessel is synthetic.
+- Galileo OSNMA: real OSNMAlib on official ICD test vectors; the lab vessel's OSNMA inputs are synthetic; no live signal-in-space receiver.
+- No production identity provider; admin access is token-based.
+- Public AIS is not authenticated; Northstar treats it as a claim to be checked, never as ground truth.
+- Strong independent evidence exists only for the instrumented lab vessel; other ships rely on AIS-based checks.

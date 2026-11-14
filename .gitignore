@@ -42,8 +42,7 @@ data/geo/.cache/
 test-results/
 playwright-report/
 
-# Editor / local agent
-.cursor/
+# Editor
 .vscode/
 
 data/fixtures/audit.jsonl.broken-*
@@ -58,3 +57,28 @@ data/rf/raw/
 data/rf/clips/
 !data/rf/**/*.json
 !data/rf/**/*.md
+
+# Lab returns (may be sensitive; repo is public): imported outputs and attachments stay local
+data/lab/
+docs/lab-data/returns/
+docs/lab-data/attachments/
+
+# Private data — kept on local disks only, never pushed (share out of band; same paths)
+data/replay/
+data/rf/
+docs/lab-data/
+data/geo/land_osm_gof.geojson
+data/geo/ports_v2.geojson
+data/geo/osm_provenance.json
+data/fixtures/audit.jsonl
+data/fixtures/eval_metrics.json
+data/fixtures/eval_pipeline_metrics.json
+
+# Lab return from the lab (private)
+data_lab/
+
+# Generated SBOM (CI artifact)
+sbom.cdx.json
+
+# Local editor/agent launch config
+.claude/

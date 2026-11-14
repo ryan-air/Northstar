@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // MapLibre 6 loads its worker from a sibling file (maplibre-gl-worker.mjs); Vite's dep
+  // pre-bundling copies the main bundle but not the worker, so the map stays black.
+  optimizeDeps: { exclude: ['maplibre-gl'] },
   server: {
     port: 5173,
     proxy: {

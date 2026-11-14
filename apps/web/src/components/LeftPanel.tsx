@@ -1,4 +1,8 @@
+import { useEffect } from 'react';
 import { useStore } from '../lib/store';
+import { ROLE_LABEL, roleOf } from '../lib/roles';
+
+const hhmm = (iso: string) => iso.slice(11, 16);
 
 export function LeftPanel() {
   const snapshot = useStore((s) => s.snapshot);
@@ -17,6 +21,17 @@ export function LeftPanel() {
   });
 
   const clearSelection = () => useStore.setState({ selectedId: null });
+  const labEvents = useStore((s) => s.labEvents);
+  const labVesselName = useStore((s) => s.labVesselName);
+  const labId = snapshot?.injection?.lab_vessel_id ?? null;
+  useEffect(() => {
+    if (labId) void useStore.getState().loadLabEvents();
+  }, [labId]);
+  const jump = async (iso: string) => {
+    // Start a minute before the event so the approach is visible.
+    const t = new Date(Date.parse(iso) - 60_000).toISOString();
+    if ((await useStore.getState().seekLab(t)) && labId) useStore.getState().selectVessel(labId);
+  };
 
   return (
     <aside className="panel">
@@ -64,8 +79,17 @@ export function LeftPanel() {
               <div className="band-label">{vessel.trust.trust_band}</div>
             </div>
             {vessel.origin && (
-              <div className={`origin-tag ${vessel.origin}`} style={{ marginTop: 8 }}>
-                {vessel.origin === 'live' ? 'LIVE AIS' : 'HIST LAB'}
+              <div className={`origin-tag ${roleOf(vessel, snapshot)}`} style={{ marginTop: 8 }}>
+                {ROLE_LABEL[roleOf(vessel, snapshot)]}
+              </div>
+            )}
+            {vessel.trust.transponder_kind === 'non_vessel_transponder' && (
+              <div
+                className="origin-tag nonvessel"
+                style={{ marginTop: 4 }}
+                title={(vessel.trust.transponder_kind_reasons ?? []).join('; ')}
+              >
+                NOT A VESSEL (fixed / test unit)
               </div>
             )}
             <div className="coverage-bar" style={{ marginTop: 8 }}>
@@ -73,7 +97,8 @@ export function LeftPanel() {
             </div>
             <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
               {vessel.trust.evidence_coverage.toFixed(0)}% ·{' '}
-              {vessel.trust.available_checks}/{vessel.trust.expected_checks} checks
+              {vessel.trust.available_checks}/{vessel.trust.expected_checks} checks · verified{' '}
+              {vessel.trust.verified_evidence_coverage?.toFixed(0) ?? '—'}% (live/recorded only)
             </div>
           </div>
           <div className="kv" style={{ padding: '0 12px 10px' }}>
@@ -96,6 +121,24 @@ export function LeftPanel() {
         </div>
       )}
 
+      {labId && labEvents.length > 0 && snapshot?.view_mode !== 'live' && (
+        <div className="lab-events">
+          <div className="panel-title">Lab vessel events{labVesselName ? ` · ${labVesselName}` : ''}</div>
+          <div className="lab-events-note">Flagged by the vessel's own receiver / RF captures (recorded data).</div>
+          {labEvents.map((e) => (
+            <div key={`${e.kind}-${e.start}`} className={`lab-event ${e.kind}`}>
+              <span className="when mono">
+                {hhmm(e.start)}–{hhmm(e.end)}
+              </span>
+              <span className="what">{e.detail}</span>
+              <button type="button" className="jump" onClick={() => void jump(e.start)}>
+                Jump
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="panel-title">Vessels</div>
       <div className="vessel-list">
         {sortedVessels.map((v) => (
@@ -105,7 +148,11 @@ export function LeftPanel() {
             className={`live-row${selectedId === v.entity_id ? ' active' : ''}`}
             onClick={() => useStore.getState().selectVessel(v.entity_id)}
           >
-            <span className="name">{v.name ?? v.entity_id}</span>
+            <span className="name">
+              {v.name ?? v.entity_id}
+              {roleOf(v, snapshot) === 'simulated' && <span className="row-tag sim">SIM</span>}
+              {roleOf(v, snapshot) === 'lab' && <span className="row-tag lab">LAB</span>}
+            </span>
             <span className={`band ${v.trust.trust_band}`}>{v.trust.trust_score}</span>
           </button>
         ))}

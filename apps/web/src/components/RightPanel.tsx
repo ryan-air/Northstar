@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { useStore } from '../lib/store';
+import { SecurityTab } from './SecurityTab';
+import { CHECK_LABEL, NOT_APPLICABLE_NOTE, roleOf, shortExplanation, shortSources, visibleChecks } from '../lib/roles';
 
 export function RightPanel() {
-  const [tab, setTab] = useState<'events' | 'evidence' | 'sources'>('events');
+  const [tab, setTab] = useState<'events' | 'evidence' | 'sources' | 'security'>('events');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const snapshot = useStore((s) => s.snapshot);
   const selectedId = useStore((s) => s.selectedId);
   const vessel = snapshot?.vessels?.find((v) => v.entity_id === selectedId);
   const events = [...(snapshot?.timeline ?? [])].reverse();
   const selectedEvent = events.find((e) => e.id === selectedEventId) ?? null;
+  const role = vessel ? roleOf(vessel, snapshot) : 'recorded';
+  const evidence = visibleChecks(role, vessel?.trust.checks ?? []);
 
   return (
     <aside className="panel right">
@@ -25,7 +29,11 @@ export function RightPanel() {
         <button className={tab === 'sources' ? 'active' : ''} onClick={() => setTab('sources')}>
           Sources
         </button>
+        <button className={tab === 'security' ? 'active' : ''} onClick={() => setTab('security')}>
+          Security
+        </button>
       </div>
+      {tab === 'security' && <SecurityTab />}
 
       {tab === 'events' && (
         <div className="tab-body events-tab">
@@ -102,19 +110,40 @@ export function RightPanel() {
 
       {tab === 'evidence' && (
         <div className="tab-body">
-          {(vessel?.trust.checks ?? []).map((c) => (
+          {vessel && evidence.hidden > 0 && (
+            <p className="muted evidence-hidden-note">
+              {evidence.hidden} layer{evidence.hidden > 1 ? 's' : ''} hidden — {NOT_APPLICABLE_NOTE[role]}.
+            </p>
+          )}
+          {evidence.shown.map((c) => (
             <div key={c.check_id} className="evidence-row">
               <div className="head">
-                <strong className="mono">{c.check_id}</strong>
+                <strong className="evidence-name" title={c.check_id}>{CHECK_LABEL[c.check_id] ?? c.check_id}</strong>
                 <span className={`status-pill ${c.status}`}>{c.status}</span>
+                {c.evidence_class && c.status !== 'unavailable' && c.status !== 'unsupported' && (
+                  <span
+                    className={`evidence-pill ${c.evidence_class === 'demo' ? 'simulated' : c.evidence_class}`}
+                    title="Where this evidence comes from: live feed, recorded data, or simulated/synthetic values"
+                  >
+                    {c.evidence_class === 'simulated' && /synthetic/i.test(c.explanation)
+                      ? 'synthetic'
+                      : c.evidence_class === 'demo'
+                        ? 'simulated'
+                        : c.evidence_class}
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: 12, lineHeight: 1.35 }}>{c.explanation}</div>
-              <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-                anomaly={c.anomaly_score ?? 'n/a'} · q={(c.quality ?? 0).toFixed(2)} · fresh=
-                {(c.freshness ?? 0).toFixed(2)} · src={(c.source_ids ?? []).join(',') || '—'}
-                {c.missing_reason ? ` · missing: ${c.missing_reason}` : ''}
-                {c.hard_alert ? ' · HARD' : ''}
+              <div className="evidence-text" title={c.explanation}>
+                {shortExplanation(c.explanation)}
               </div>
+              {c.status !== 'unavailable' && c.status !== 'unsupported' && (
+                <div className="muted evidence-meta">
+                  Anomaly {c.anomaly_score != null ? c.anomaly_score.toFixed(2) : '—'} · Quality{' '}
+                  {(c.quality ?? 0).toFixed(2)} · Fresh {(c.freshness ?? 0).toFixed(2)}
+                  {shortSources(c.source_ids) ? ` · ${shortSources(c.source_ids)}` : ''}
+                  {c.hard_alert ? ' · Hard alert' : ''}
+                </div>
+              )}
             </div>
           ))}
           {!vessel && (
@@ -190,7 +219,7 @@ export function RightPanel() {
               >
                 OSNMA:{' '}
                 {snapshot.lab.osnma_protocol_status === 'authenticated'
-                  ? 'ICD demo'
+                  ? 'ICD test vector'
                   : snapshot.lab.osnma_protocol_status}
               </div>
             )}

@@ -2,7 +2,7 @@
  * Onboard gateway simulator — signs telemetry and POSTs to Northstar.
  * Follows Hist Lab signed entity; issues/embeds challenge nonces; optional mTLS + PKCS#11.
  */
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import https from 'node:https';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,8 +24,49 @@ let ENTITY_ID = env('NORTHSTAR_ENTITY_ID', 'FLAGSHIP_ENTITY_ID') ?? 'LAB-2306850
 const ENTITY_ID_PINNED = Boolean(env('NORTHSTAR_ENTITY_ID', 'FLAGSHIP_ENTITY_ID'));
 let keyId = `${DEVICE_ID}-key-1`;
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
+const DATA_DIR = (process.env.NORTHSTAR_DATA_DIR ?? '.northstar/data').replace(/^~/, process.env.HOME ?? '');
+const DATA_DIR_ABS = DATA_DIR.startsWith('/') ? DATA_DIR : join(REPO_ROOT, DATA_DIR);
+const RUNTIME_REPLAY = join(DATA_DIR_ABS, 'replay/gof_ais.jsonl');
 const REPLAY_PATH =
-  process.env.NORTHSTAR_REPLAY_PATH ?? join(REPO_ROOT, 'data/replay/gof_ais.jsonl');
+  process.env.NORTHSTAR_REPLAY_PATH ??
+  (existsSync(RUNTIME_REPLAY) ? RUNTIME_REPLAY : join(REPO_ROOT, 'data/replay/gof_ais.jsonl'));
+/** P4.1: enrolment token written by the server on first run. */
+const LAB_DIR = process.env.NORTHSTAR_LAB_DIR ?? join(REPO_ROOT, 'data_lab');
+
+/** U12 onboard log path when the lab return's vessel matches `mmsi`, else null. */
+function findLabOnboardLog(mmsi: number): string | null {
+  try {
+    const platform = JSON.parse(readFileSync(join(LAB_DIR, 'U0_platform', 'U0_platform.json'), 'utf8')) as { mmsi?: number };
+    if (platform.mmsi !== mmsi) return null;
+    const dir = join(LAB_DIR, 'U12_onboard_gnss');
+    const f = readdirSync(dir).find((n) => /^U12_position_.*\.csv$/.test(n));
+    return f ? join(dir, f) : null;
+  } catch {
+    return null;
+  }
+}
+
+const ENROL_TOKEN_PATH = process.env.NORTHSTAR_ENROL_TOKEN_PATH ?? join(DATA_DIR_ABS, 'enrol.token');
+/** P3.2: legacy wall-clock playhead (independent of the Lab clock). */
+const LEGACY_CLOCK = process.env.NORTHSTAR_DEVICE_LEGACY_CLOCK === 'true';
+
+function readEnrolToken(): string | undefined {
+  try {
+    return process.env.NORTHSTAR_ENROL_TOKEN ?? readFileSync(ENROL_TOKEN_PATH, 'utf8').trim();
+  } catch {
+    return undefined;
+  }
+}
+
+async function fetchLabClock(): Promise<{ ready: boolean; sim_time: string; speed: number } | null> {
+  try {
+    const res = await apiFetch(`${API}/api/lab/clock`);
+    if (!res.ok) return null;
+    return (await res.json()) as { ready: boolean; sim_time: string; speed: number };
+  } catch {
+    return null;
+  }
+}
 let MMSI = mmsiFromIdentity(ENTITY_ID, process.env.NORTHSTAR_MMSI);
 const GNSS_NOISE_METERS = Number(process.env.NORTHSTAR_GNSS_NOISE_METERS ?? 3);
 const defaultKeyDir = existsSync(join(REPO_ROOT, '.northstar/keys'))
@@ -47,7 +88,26 @@ const USE_MTLS =
 type Mode = 'normal' | 'tamper' | 'replay';
 
 let mode: Mode = 'normal';
-let sequence = 1;
+// Monotonic sequence counter persisted next to the device key (as a real device keeps it in
+// non-volatile storage). Without this a restart reuses old numbers and the shore correctly
+// rejects every message as a replay.
+const SEQ_PATH = join(KEY_DIR, `${DEVICE_ID}.seq`);
+let sequence = (() => {
+  try {
+    const n = Number(readFileSync(SEQ_PATH, 'utf8').trim());
+    return Number.isInteger(n) && n > 0 ? n + 1 : 1;
+  } catch {
+    return 1;
+  }
+})();
+function persistSequence(n: number): void {
+  try {
+    mkdirSync(dirname(SEQ_PATH), { recursive: true });
+    writeFileSync(SEQ_PATH, `${n}\n`, { mode: 0o600 });
+  } catch {
+    /* best effort */
+  }
+}
 let lastEnvelope: unknown = null;
 let signer: PayloadSigner | null = null;
 let onboardTrack: OnboardTrack | null = null;
@@ -152,9 +212,13 @@ async function refreshDeviceMeta(): Promise<void> {
 
 async function enrolDevice(): Promise<void> {
   if (!signer) throw new Error('signer unavailable for enrollment');
+  const enrolToken = readEnrolToken();
   const res = await apiFetch(`${API}/api/devices/enrol`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(enrolToken ? { 'x-northstar-enrol-token': enrolToken } : {}),
+    },
     body: JSON.stringify({
       device_id: DEVICE_ID,
       entity_id: ENTITY_ID,
@@ -250,7 +314,22 @@ async function tick(): Promise<void> {
     return;
   }
 
-  const vessel = onboardTrack.position();
+  // P3.2: sample the onboard track at the Lab's replay time so signed and AIS
+  // positions refer to the same instant. `timestamp` stays wall-clock (freshness/replay
+  // protection unchanged); observation_time carries the replay instant.
+  let observationTime: string | undefined;
+  let vessel = onboardTrack.position();
+  if (!LEGACY_CLOCK) {
+    const clock = await fetchLabClock();
+    const replayMs = clock?.ready ? Date.parse(clock.sim_time) : NaN;
+    if (Number.isFinite(replayMs) && onboardTrack.covers(replayMs)) {
+      vessel = onboardTrack.positionAt(replayMs);
+      observationTime = new Date(replayMs).toISOString();
+    } else if (clock?.ready) {
+      console.warn('[device-sim] Lab clock outside onboard track span — skipping tick');
+      return;
+    }
+  }
 
   const challenge = await fetchChallenge();
   if (!challenge) {
@@ -268,8 +347,9 @@ async function tick(): Promise<void> {
     v: 1,
     device_id: DEVICE_ID,
     entity_id: ENTITY_ID,
-    sequence_number: sequence++,
+    sequence_number: (persistSequence(sequence), sequence++),
     timestamp: new Date().toISOString(),
+    ...(observationTime ? { observation_time: observationTime } : {}),
     firmware_version: '1.0.0',
     position: { lat: vessel.lat, lon: vessel.lon, crs: 'EPSG:4326' },
     speed_over_ground_knots: vessel.sog,
@@ -322,11 +402,17 @@ async function start(): Promise<void> {
     }
   }
   await enrolDevice();
-  onboardTrack = await OnboardTrack.load({
-    path: REPLAY_PATH,
-    mmsi: MMSI,
-    noiseMeters: GNSS_NOISE_METERS,
-  });
+  // Lab return (private, gitignored): if its vessel is ours, sign the independent onboard
+  // receiver log (U12) instead of a noisy copy of the AIS track.
+  const labOnboard = findLabOnboardLog(MMSI);
+  onboardTrack = labOnboard
+    ? OnboardTrack.loadCsv(labOnboard, MMSI)
+    : await OnboardTrack.load({
+        path: REPLAY_PATH,
+        mmsi: MMSI,
+        noiseMeters: GNSS_NOISE_METERS,
+      });
+  if (labOnboard) console.log(`[device-sim] signing the lab onboard receiver log for MMSI ${MMSI}`);
   console.log(
     `[device-sim] ${DEVICE_ID}@${ENTITY_ID} using onboard MMSI ${MMSI}; posting to ${SERVER} every ${INTERVAL_MS}ms (gnss_noise=${GNSS_NOISE_METERS}m, mtls=${!!mtlsAgent}, backend=${SIGNER_BACKEND})`,
   );

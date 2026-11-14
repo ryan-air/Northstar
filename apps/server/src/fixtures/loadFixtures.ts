@@ -10,11 +10,18 @@ function loadJson<T>(name: string): T {
 
 /** In-memory cache so snapshot/feedHealth do not hit disk every tick. */
 let osnmaIcdCache: OsnmaResult | null | undefined;
+/** P1.5: runtime cache path (data dir); falls back to the tracked seed fixture. */
+let osnmaCachePaths: string[] = [join(REPO_ROOT, 'data/fixtures/osnma_icd_cache.json')];
+
+export function setOsnmaCachePaths(paths: string[]): void {
+  osnmaCachePaths = paths;
+  osnmaIcdCache = undefined;
+}
 
 /** Prefer OSNMAlib ICD verification cache when present (real TESLA/MAC run). */
 export function loadOsnmaIcdCache(atIso?: string): OsnmaResult | null {
   if (osnmaIcdCache === undefined) {
-    const path = join(REPO_ROOT, 'data/fixtures/osnma_icd_cache.json');
+    const path = osnmaCachePaths.find((p) => existsSync(p)) ?? osnmaCachePaths[0]!;
     if (!existsSync(path)) {
       osnmaIcdCache = null;
     } else {

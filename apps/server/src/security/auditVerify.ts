@@ -17,10 +17,15 @@ export interface AuditVerifyResult {
   tip_seq: number;
 }
 
-export function verifyAuditChain(
-  relPath = 'data/fixtures/audit.jsonl',
-): AuditVerifyResult {
-  const path = join(REPO_ROOT, relPath);
+let AUDIT_PATH = join(REPO_ROOT, 'data/fixtures/audit.jsonl');
+
+/** P1.5: verify the audit log the app actually writes. */
+export function setAuditLogPath(path: string): void {
+  AUDIT_PATH = path;
+}
+
+export function verifyAuditChain(relPath?: string): AuditVerifyResult {
+  const path = relPath ? (relPath.startsWith('/') ? relPath : join(REPO_ROOT, relPath)) : AUDIT_PATH;
   if (!existsSync(path)) {
     return {
       ok: true,
@@ -124,7 +129,7 @@ export function verifyAuditChain(
 /** Full verify including shore signature on checkpoint. */
 export async function verifyAuditChainWithShore(
   shore: ShoreKeyring,
-  relPath = 'data/fixtures/audit.jsonl',
+  relPath?: string,
 ): Promise<AuditVerifyResult> {
   const base = verifyAuditChain(relPath);
   if (!base.chain_ok) return base;

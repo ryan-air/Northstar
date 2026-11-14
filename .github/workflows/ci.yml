@@ -1,0 +1,55 @@
+name: ci
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-test-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # P0.1: must build from a clean checkout (no stale .tsbuildinfo).
+      - run: rm -rf packages/*/dist && npm run build
+      - run: npm run typecheck
+      - run: npm test
+      # Heavier seeded fuzzing of every untrusted-input boundary, plus a CycloneDX SBOM.
+      - run: npm run fuzz
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run sbom
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+      # Lab-return importer self-test and the eval harness need private data that is kept
+      # off the public repo; they run only where that data is present (e.g. a private runner).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: lab importer self-test (needs private template)
+        run: |
+          if [ -f docs/lab-data/Northstar_Lab_Data_Request.xlsx ]; then
+            pip install openpyxl==3.1.5 && npm run lab:test
+          else
+            echo "private lab template not present — skipped"
+          fi
+      - name: eval harness + gates (needs private snapshot)
+        run: |
+          if [ -f data/replay/snapshots/gof_ais.eval-v1.jsonl ]; then
+            npx tsx scripts/eval-pipeline.ts --n 10 --no-legacy --out /tmp/eval_pipeline_metrics.json
+            npx tsx scripts/eval/check-gates.ts --metrics /tmp/eval_pipeline_metrics.json
+          else
+            echo "private eval snapshot not present — skipped"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-pipeline-metrics
+          path: /tmp/eval_pipeline_metrics.json
+          if-no-files-found: ignore

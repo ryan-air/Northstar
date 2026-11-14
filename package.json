@@ -2,7 +2,7 @@
   "name": "northstar",
   "version": "0.1.0",
   "private": true,
-  "description": "Northstar — real-time maritime GNSS position-trust platform",
+  "description": "Northstar \u2014 real-time maritime GNSS position-trust platform",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -23,7 +23,15 @@
     "setup:softhsm": "bash scripts/setup-softhsm.sh",
     "gen-keys": "tsx scripts/gen-keys.ts",
     "check-tiles": "node scripts/check-tiles.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "eval:pipeline": "tsx scripts/eval-pipeline.ts",
+    "eval:freeze": "tsx scripts/eval/freeze-dataset.ts",
+    "eval:gates": "tsx scripts/eval/check-gates.ts",
+    "lab:import": "python3 -I scripts/lab/import_lab_return.py",
+    "lab:test": "python3 -I scripts/lab/test_import_lab_return.py",
+    "record:stream": "tsx scripts/record/digitraffic-stream.ts",
+    "sbom": "npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json && echo wrote sbom.cdx.json",
+    "fuzz": "FUZZ_ITERS=3000 vitest run apps/server/src/security/fuzz.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

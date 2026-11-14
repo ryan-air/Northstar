@@ -82,10 +82,20 @@ describe('scenario e2e (in-process, isolated fixtures)', () => {
   it('sudden spoof lowers target trust and raises geographic/kinematic evidence', () => {
     app.setScenario('reset');
     for (let i = 0; i < 3; i++) app.tick();
-    const target =
-      app.lab.signedEntityId ?? app.selectedEntityId ?? 'VESSEL-001';
-    app.setScenario('sudden_spoof', target);
+    const historical = app.lab.signedEntityId ?? undefined;
+    // Injection policy: a request to attack a historical vessel is redirected to a simulated ship.
+    const applied = app.setScenario('sudden_spoof', historical);
+    const target = applied.target;
+    if (app.useHistoricalLab) {
+      expect(applied.policy).toBe('simulated_only');
+      expect(app.simulatedShipIds()).toContain(target);
+      if (historical) expect(applied.retargeted_from).toBe(historical);
+    }
     for (let i = 0; i < 3; i++) app.tick();
+    if (historical && app.useHistoricalLab) {
+      const h = app.pipeline.getVessels().find((x) => x.entity_id === historical);
+      expect(h?.trust.checks.find((c) => c.check_id === 'geographic')?.status).not.toBe('fail');
+    }
     const v = app.pipeline.getVessels().find((x) => x.entity_id === target);
     expect(v).toBeTruthy();
     expect(v!.trust.trust_score).toBeLessThan(65);
@@ -97,6 +107,36 @@ describe('scenario e2e (in-process, isolated fixtures)', () => {
         kin?.status === 'fail' ||
         kin?.hard_alert,
     ).toBe(true);
+  });
+
+  it('injected attacks never target live or historical vessels', () => {
+    for (const id of ['LIVE-230000001', app.lab.signedEntityId ?? 'LAB-0']) {
+      for (const sc of ['gradual_drift', 'osnma_failure', 'rf_aoa_spoof_cluster'] as const) {
+        const r = app.setScenario(sc, id);
+        if (app.useHistoricalLab) {
+          expect(r.target).not.toBe(id);
+          expect(app.simulatedShipIds()).toContain(r.target);
+        }
+      }
+    }
+    app.setScenario('normal');
+  });
+
+  it('RF spoof load and posted RF results bind to simulated ships only', () => {
+    const fs = app.fullstackEntityId();
+    const spoof = app.loadRfLabResult('spoof');
+    expect(app.simulatedShipIds()).toContain(spoof.target);
+    const posted = app.applyRfLabResult({
+      ...(app.getRfLabResult() ?? ({} as never)),
+      entity_id: fs ?? 'LIVE-230000001',
+      status: 'fail',
+    } as never);
+    // In synthetic mode (no private recording) the full-stack ship is itself simulated.
+    if (app.useHistoricalLab) expect(posted.target).not.toBe(fs);
+    expect(app.simulatedShipIds()).toContain(posted.target);
+    // The full-stack recorded ship keeps the nominal demo capture.
+    expect(app.getRfLabResult()?.status).not.toBe('fail');
+    app.setScenario('normal');
   });
 
   it('OSNMA protocol demo binds only to fullstack Hist Lab vessel by default', () => {

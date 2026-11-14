@@ -15,6 +15,23 @@ import {
   checkAttestation,
   checkDeviceSignature,
   checkFleetCoherence,
+  checkFleetCoherenceV2,
+  checkIdentity,
+  createIdentityState,
+  stampEvidenceClass,
+  createTransponderKindState,
+  checkDrSeries,
+  assessSilence,
+  checkTargetObservation,
+  type DrAnchor,
+  type DrSample,
+  type TargetObservation,
+  updateTransponderKind,
+  type TransponderKind,
+  type TransponderKindState,
+  type FleetDisplacement,
+  type IdentityConfig,
+  type IdentityState,
   checkGeographic,
   checkGnssDiagnostics,
   checkImuConsistency,
@@ -37,7 +54,43 @@ import type { GeoData } from '../geo/loadGeo.js';
 import type { ThresholdsConfig } from '../config.js';
 import { randomUUID } from 'node:crypto';
 
+/** Per-source kinematic state (P3.1). Keys: ais_digitraffic | ais_aisstream | device_telemetry. */
+interface SourceRuntime {
+  lastEvent?: PositionEvent;
+  prevEvent?: PositionEvent;
+  kinState: KinematicsState;
+  dr: DeadReckonState | null;
+}
+
+export function sourceKeyOf(e: PositionEvent): string {
+  if (e.source === 'device_telemetry') return 'device_telemetry';
+  if (e.provider_id === 'aisstream') return 'ais_aisstream';
+  return 'ais_digitraffic';
+}
+
+/** Event as seen by kinematics: observation_time (if any) replaces source_timestamp. */
+function kinematicView(e: PositionEvent): PositionEvent {
+  return e.observation_time ? { ...e, source_timestamp: e.observation_time } : e;
+}
+
 interface EntityRuntime {
+  sources: Map<string, SourceRuntime>;
+  /** Ring buffer of recent AIS events (oldest first). */
+  aisHistory: PositionEvent[];
+  identityState: IdentityState;
+  transponderState: TransponderKindState;
+  lastIdentity?: CheckResult;
+  transponderKind?: { kind: TransponderKind; reasons: string[] };
+  drSeries?: DrSample[];
+  drAnchor?: DrAnchor | null;
+  targetObs?: TargetObservation[];
+  /** Latest checks from a non-device (AIS) report, and latest device-only checks. */
+  lastAisChecks?: CheckResult[];
+  deviceChecks?: { checks: CheckResult[]; atWallMs: number };
+  /** Signed onboard track comes from an independent receiver (lab return), not an AIS copy. */
+  onboardIndependent?: boolean;
+  /** Silence/jamming episodes currently alerted (one alert per episode). */
+  silenceActive?: Map<string, number>;
   lastEvent?: PositionEvent;
   previousEvent?: PositionEvent;
   lastAisEvent?: PositionEvent;
@@ -61,6 +114,8 @@ export class TrustPipeline {
   private alerts: AlertEvent[] = [];
   private timeline: AlertEvent[] = [];
   private kinConfig: KinematicsConfig;
+  private identityConfig: IdentityConfig | null;
+  private readonly perSource: boolean;
 
   constructor(
     private fusion: FusionConfig,
@@ -71,6 +126,19 @@ export class TrustPipeline {
       ...thresholds.kinematics,
       vessel_class_limits: thresholds.vessel_class_limits as KinematicsConfig['vessel_class_limits'],
     };
+    this.perSource = thresholds.state?.per_source === true;
+    this.identityConfig = thresholds.identity
+      ? {
+          ...thresholds.identity,
+          max_sog_kn: Object.fromEntries(
+            Object.entries(thresholds.vessel_class_limits).map(([k, v]) => [k, v.max_sog_kn]),
+          ),
+        }
+      : null;
+  }
+
+  get configVersions(): { fusion: string; thresholds: string } {
+    return { fusion: this.fusion.version, thresholds: this.thresholds.version };
   }
 
   reset(): void {
@@ -100,6 +168,74 @@ export class TrustPipeline {
     this.ensure(entityId).osnma = r;
   }
 
+  /** Recorded heading/speed-log series for GNSS-independent dead reckoning (lab return). */
+  setDrSeries(entityId: string, series: DrSample[] | null): void {
+    const rt = this.ensure(entityId);
+    rt.drSeries = series ?? undefined;
+    rt.drAnchor = null;
+  }
+
+  /**
+   * Clock-driven alerts that need no new report: receiver jamming/spoofing flags and AIS
+   * silence while an independent sensor still tracks the vessel. One alert per episode.
+   */
+  checkSilence(entityId: string, nowIso: string): AlertEvent[] {
+    const rt = this.entities.get(entityId);
+    if (!rt) return [];
+    const last = rt.lastAisEvent ?? null;
+    const findings = assessSilence({
+      nowMs: Date.parse(nowIso),
+      lastReport: last
+        ? { t: Date.parse(last.source_timestamp), lat: last.position.lat, lon: last.position.lon }
+        : null,
+      gnss: rt.gnss ?? null,
+      observations: rt.targetObs ?? [],
+      typicalIntervalS: (() => {
+        const ts = rt.track.slice(-11).map((p) => Date.parse(p.t)).filter(Number.isFinite);
+        const gaps = ts.slice(1).map((x, i) => (x - ts[i]!) / 1000).filter((g) => g > 0).sort((a, b) => a - b);
+        return gaps.length >= 3 ? gaps[gaps.length >> 1]! : null;
+      })(),
+    });
+    // One alert per episode; an episode closes 120 s after its condition was last seen,
+    // so an intermittent receiver flag does not re-alert every few seconds.
+    const nowMs = Date.parse(nowIso);
+    const active = (rt.silenceActive ??= new Map());
+    for (const [k, last] of [...active]) if (nowMs - last > 120_000) active.delete(k);
+    const fresh: AlertEvent[] = [];
+    for (const f of findings) {
+      const seen = active.has(f.kind);
+      active.set(f.kind, nowMs);
+      if (seen) continue;
+      const a: AlertEvent = {
+        id: randomUUID(),
+        entity_id: entityId,
+        kind: f.kind,
+        severity: f.severity,
+        title: f.title,
+        explanation: f.explanation,
+        trust_score_before: rt.trust?.trust_score ?? null,
+        trust_score_after: rt.trust?.trust_score ?? null,
+        check_ids: f.kind === 'ais_silent_while_tracked' ? ['neighbors'] : ['gnss_diagnostics'],
+        observed_at: nowIso,
+        evidence_refs: [],
+        hard: f.severity === 'critical',
+      };
+      this.pushAlert(a);
+      fresh.push(a);
+    }
+    return fresh;
+  }
+
+  /** Mark the signed onboard track for this vessel as an independent receiver (lab return). */
+  setOnboardIndependent(entityId: string, independent: boolean): void {
+    this.ensure(entityId).onboardIndependent = independent;
+  }
+
+  /** Independent observations of this vessel (radar/SAR), sorted by time (lab return). */
+  setTargetObservations(entityId: string, obs: TargetObservation[] | null): void {
+    this.ensure(entityId).targetObs = obs ?? undefined;
+  }
+
   setAttestation(entityId: string, a: AttestationEvidence | null): void {
     this.ensure(entityId).attestation = a;
   }
@@ -113,15 +249,34 @@ export class TrustPipeline {
     rt.name = event.name ?? rt.name;
     rt.vessel_class = event.vessel_class ?? rt.vessel_class;
 
-    const kin = checkKinematics(event, rt.lastEvent ?? null, rt.kinState, this.kinConfig, nowIso);
-    rt.kinState = kin.state;
+    const srcKey = sourceKeyOf(event);
+    const src = this.ensureSource(rt, srcKey);
+    const kinEvent = kinematicView(event);
+    // v2: the "previous" point always comes from the same source (never device↔AIS).
+    const prevForKin = this.perSource ? (src.lastEvent ?? null) : (rt.lastEvent ?? null);
+    const kinStateIn = this.perSource ? src.kinState : rt.kinState;
 
-    const geo = checkGeographic(
+    const kin = checkKinematics(kinEvent, prevForKin, kinStateIn, this.kinConfig, nowIso);
+    if (this.perSource) src.kinState = kin.state;
+    else rt.kinState = kin.state;
+
+    let geo = checkGeographic(
       event,
       { land: this.geo.land, ports: this.geo.ports, restricted: this.geo.restricted },
       this.thresholds.geographic,
       nowIso,
     );
+    // Without the detailed coastline (private data, not in the public repo) only the coarse
+    // hand-drawn polygons are loaded; they cannot support a "fail", so cap at warning.
+    if (this.geo.datasets?.land_is_fallback && geo.status === 'fail') {
+      geo = {
+        ...geo,
+        status: 'warning',
+        hard_alert: false,
+        anomaly_score: Math.min(geo.anomaly_score ?? 0.6, 0.6),
+        explanation: `${geo.explanation} (Coarse fallback coastline loaded — capped at warning.)`,
+      };
+    }
 
     // Spatial grid (~0.05°) so neighbour scan is not full O(n²) at fleet scale.
     const cell = (lat: number, lon: number) =>
@@ -143,7 +298,15 @@ export class TrustPipeline {
         reliability: 0.7,
       }));
 
-    const neighbors = checkNeighbors(event, neighborObs, this.thresholds.neighbors, nowIso);
+    // Independent observations of this vessel (e.g. VTS radar / SAR from a lab return) take
+    // precedence over the nearby-traffic comparison when one is fresh enough.
+    const targetCheck =
+      rt.targetObs && srcKey !== 'device_telemetry'
+        ? checkTargetObservation(event, rt.targetObs, this.thresholds.neighbors, nowIso)
+        : null;
+    const neighbors = targetCheck
+      ? { ...targetCheck, evidence_class: 'recorded' as const }
+      : checkNeighbors(event, neighborObs, this.thresholds.neighbors, nowIso);
 
     const cross = checkAisCrossFeed(
       event,
@@ -152,6 +315,7 @@ export class TrustPipeline {
         : null,
       nowIso,
       this.thresholds.neighbors.conflict_distance_m,
+      this.perSource ? this.thresholds.neighbors.max_age_s : undefined,
     );
 
     const gnss = checkGnssDiagnostics(
@@ -161,15 +325,42 @@ export class TrustPipeline {
       nowIso,
     );
 
+    // v2: dead-reckoning state is meaningless across a long reporting gap — restart it
+    // (same gap rule as the CUSUM reset). The IMU check itself is unchanged (U4).
+    const gapS =
+      prevForKin != null
+        ? (Date.parse(kinEvent.source_timestamp) - Date.parse(prevForKin.source_timestamp)) / 1000
+        : 0;
+    const resetGap = this.kinConfig.cusum?.reset_gap_s;
+    if (this.perSource && resetGap != null && gapS > resetGap) src.dr = null;
     const imuR = checkImuConsistency(
-      event,
-      rt.lastEvent ?? null,
+      kinEvent,
+      prevForKin,
       rt.imu ?? null,
-      rt.dr,
+      this.perSource ? src.dr : rt.dr,
       this.thresholds.imu,
       nowIso,
     );
-    rt.dr = imuR.dr;
+    if (this.perSource) src.dr = imuR.dr;
+    else rt.dr = imuR.dr;
+    // Recorded gyro-heading + speed-log series (lab return): GNSS-independent dead reckoning.
+    let imuResult = imuR.result;
+    if (rt.drSeries && srcKey !== 'device_telemetry') {
+      // Latest independent (radar/SAR) fix at or before this report, ≤ 60 s old.
+      let indep: DrAnchor | null = null;
+      if (rt.targetObs) {
+        const tk = Date.parse(kinEvent.source_timestamp);
+        for (let i = rt.targetObs.length - 1; i >= 0; i--) {
+          const ot = Date.parse(rt.targetObs[i]!.observed_at);
+          if (ot > tk) continue;
+          if (tk - ot <= 60_000) indep = { t: ot, lat: rt.targetObs[i]!.lat, lon: rt.targetObs[i]!.lon };
+          break;
+        }
+      }
+      const drr = checkDrSeries(kinEvent, rt.drSeries, rt.drAnchor ?? null, nowIso, undefined, neighbors.status !== 'fail', indep);
+      rt.drAnchor = drr.anchor;
+      imuResult = drr.result;
+    }
 
     const osnma = checkOsnma(event.entity_id, rt.osnma ?? null, nowIso);
     const sig = checkDeviceSignature(
@@ -180,11 +371,21 @@ export class TrustPipeline {
     const attest = checkAttestation(event.entity_id, rt.attestation ?? null, nowIso);
     const rfLab = checkRfLab(event.entity_id, rt.rfLab ?? null, nowIso);
     const spatialAoa = checkSpatialAoa(event.entity_id, rt.rfLab ?? null, nowIso);
-    const signedVsAis = checkSignedVsAis(
-      event,
-      event.source === 'device_telemetry' ? (rt.lastAisEvent ?? null) : null,
-      nowIso,
-    );
+    const svaCfg = this.thresholds.signed_vs_ais;
+    const signedVsAis = svaCfg
+      ? checkSignedVsAis(
+          event,
+          event.source === 'device_telemetry'
+            ? interpolateAis(rt.aisHistory, Date.parse(kinEvent.source_timestamp), svaCfg.interp_window_s)
+            : null,
+          nowIso,
+          { warn_m: svaCfg.warn_m, fail_m: svaCfg.fail_m },
+        )
+      : checkSignedVsAis(
+          event,
+          event.source === 'device_telemetry' ? (rt.lastAisEvent ?? null) : null,
+          nowIso,
+        );
 
     const recentCutoffMs = Date.parse(nowIso) - this.thresholds.neighbors.max_age_s * 1000;
     const fleetDisplacements = [...this.entities.entries()].flatMap(([entityId, entityRt]) => {
@@ -213,19 +414,35 @@ export class TrustPipeline {
         },
       ];
     });
-    const fleetCoherence = checkFleetCoherence(
-      event.entity_id,
-      fleetDisplacements,
-      nowIso,
-    );
+    const fleetCoherence = this.thresholds.fleet_coherence
+      ? checkFleetCoherenceV2(
+          event.entity_id,
+          this.fleetDisplacementsV2(event, kinEvent, srcKey, nowIso),
+          nowIso,
+          this.thresholds.fleet_coherence,
+        )
+      : checkFleetCoherence(event.entity_id, fleetDisplacements, nowIso);
 
-    const checks: CheckResult[] = [
+    let identity: CheckResult;
+    if (!this.identityConfig) {
+      identity = unavailableCheck(event.entity_id, 'identity', nowIso, 'Identity check not enabled in this config version');
+    } else if (srcKey === 'device_telemetry') {
+      identity =
+        rt.lastIdentity ?? unavailableCheck(event.entity_id, 'identity', nowIso, 'No AIS identity yet');
+    } else {
+      const idr = checkIdentity(event, rt.identityState, this.identityConfig, nowIso);
+      rt.identityState = idr.state;
+      rt.lastIdentity = idr.result;
+      identity = idr.result;
+    }
+
+    const rawChecks: CheckResult[] = [
       kin.result,
       geo,
       neighbors,
       cross,
       gnss,
-      imuR.result,
+      imuResult,
       osnma,
       sig,
       attest,
@@ -234,10 +451,61 @@ export class TrustPipeline {
       signedVsAis,
       fleetCoherence,
     ];
+    if (this.identityConfig) rawChecks.push(identity);
+    const checks = stampEvidenceClass(rawChecks, {
+      event,
+      secondary: rt.lastSecondary ?? null,
+      gnss: rt.gnss ?? null,
+      imu: rt.imu ?? null,
+      osnma: rt.osnma ?? null,
+      attestation: rt.attestation ?? null,
+      rfLab: rt.rfLab ?? null,
+      onboardTrackIsAisCopy: !rt.onboardIndependent,
+    });
+
+    // One assessment per vessel across sources: a signed device report refreshes only the
+    // device checks on top of the latest AIS-based checks, and AIS reports carry the latest
+    // device checks (fresh by wall clock — device envelopes are wall-clock stamped).
+    const DEVICE_CHECKS = new Set<CheckResult['check_id']>(['device_signature', 'signed_vs_ais', 'attestation']);
+    let fusedInput = checks;
+    if (srcKey === 'device_telemetry') {
+      rt.deviceChecks = { checks: checks.filter((c) => DEVICE_CHECKS.has(c.check_id)), atWallMs: Date.now() };
+      if (rt.lastAisChecks) {
+        const dev = new Map(rt.deviceChecks.checks.map((c) => [c.check_id, c]));
+        fusedInput = rt.lastAisChecks.map((c) => dev.get(c.check_id) ?? c);
+      }
+    } else {
+      rt.lastAisChecks = checks;
+      if (rt.deviceChecks && Date.now() - rt.deviceChecks.atWallMs <= 30_000) {
+        const dev = new Map(rt.deviceChecks.checks.map((c) => [c.check_id, c]));
+        fusedInput = checks.map((c) =>
+          DEVICE_CHECKS.has(c.check_id) && (c.status === 'unavailable' || c.check_id === 'device_signature')
+            ? (dev.get(c.check_id) ?? c)
+            : c,
+        );
+      }
+    }
 
     const prevScore = rt.trust?.trust_score ?? null;
-    const fused = fuseTrust(event.entity_id, checks, this.fusion, rt.hardState, nowIso);
+    const fused = fuseTrust(event.entity_id, fusedInput, this.fusion, rt.hardState, nowIso, {
+      observationTs: kinEvent.source_timestamp,
+    });
     rt.hardState = fused.hardState;
+    if (srcKey !== 'device_telemetry') {
+      const tk = updateTransponderKind(
+        rt.transponderState,
+        event,
+        this.geo.land.query(event.position.lon, event.position.lat, { distance: 'none' }).onLand,
+      );
+      rt.transponderState = tk.state;
+      rt.transponderKind = { kind: tk.kind, reasons: tk.reasons };
+    }
+    fused.assessment = {
+      ...fused.assessment,
+      ...(rt.transponderKind
+        ? { transponder_kind: rt.transponderKind.kind, transponder_kind_reasons: rt.transponderKind.reasons }
+        : {}),
+    };
     rt.trust = fused.assessment;
 
     const anomalous =
@@ -272,7 +540,7 @@ export class TrustPipeline {
         explanation: fused.assessment.explanation,
         trust_score_before: prevScore,
         trust_score_after: fused.assessment.trust_score,
-        check_ids: checks.filter((c) => c.status === 'fail' || c.status === 'warning').map((c) => c.check_id),
+        check_ids: fusedInput.filter((c) => c.status === 'fail' || c.status === 'warning').map((c) => c.check_id),
         observed_at: nowIso,
         evidence_refs: [],
         hard: fused.assessment.hard_alerts.length > 0,
@@ -296,8 +564,13 @@ export class TrustPipeline {
 
     rt.previousEvent = rt.lastEvent;
     rt.lastEvent = event;
+    src.prevEvent = src.lastEvent;
+    src.lastEvent = kinEvent;
     if (event.source.startsWith('ais_') || event.source === 'ais') {
       rt.lastAisEvent = event;
+      rt.aisHistory.push(event);
+      const cap = this.thresholds.state?.ais_history ?? 32;
+      if (rt.aisHistory.length > cap) rt.aisHistory.splice(0, rt.aisHistory.length - cap);
     }
 
     return {
@@ -342,10 +615,81 @@ export class TrustPipeline {
     return [...this.timeline];
   }
 
+  /** Clear hard-alert debounce/active state for one entity (Hist Lab loop wrap). */
+  resetHardAlerts(entityId: string): void {
+    const rt = this.entities.get(entityId);
+    if (rt) rt.hardState = createHardAlertState();
+  }
+
+  entityIds(): string[] {
+    return [...this.entities.keys()];
+  }
+
+  private ensureSource(rt: EntityRuntime, key: string): SourceRuntime {
+    let s = rt.sources.get(key);
+    if (!s) {
+      s = { kinState: { cusum: 0 }, dr: null };
+      rt.sources.set(key, s);
+    }
+    return s;
+  }
+
+  /**
+   * v2 fleet displacements: AIS sources only, with dt and the earlier fix's SOG/COG so
+   * the coherence check can subtract each vessel's own predicted motion.
+   */
+  private fleetDisplacementsV2(
+    event: PositionEvent,
+    kinEvent: PositionEvent,
+    srcKey: string,
+    nowIso: string,
+  ): FleetDisplacement[] {
+    const cutoff = Date.parse(nowIso) - this.thresholds.neighbors.max_age_s * 1000;
+    const out: FleetDisplacement[] = [];
+    const mk = (id: string, from: PositionEvent, to: PositionEvent): FleetDisplacement | null => {
+      const t0 = Date.parse(from.source_timestamp);
+      const t1 = Date.parse(to.source_timestamp);
+      if (!(t1 > t0) || t1 < cutoff) return null;
+      return {
+        entity_id: id,
+        prev_lat: from.position.lat,
+        prev_lon: from.position.lon,
+        lat: to.position.lat,
+        lon: to.position.lon,
+        dist_m: haversineM(from.position.lat, from.position.lon, to.position.lat, to.position.lon),
+        d_lat: to.position.lat - from.position.lat,
+        d_lon: to.position.lon - from.position.lon,
+        dt_s: (t1 - t0) / 1000,
+        from_sog_kn: from.speed_over_ground_knots ?? null,
+        from_cog_deg: from.course_over_ground_deg ?? null,
+        to_sog_kn: to.speed_over_ground_knots ?? null,
+      };
+    };
+    for (const [id, rt] of this.entities) {
+      if (id === event.entity_id) {
+        if (srcKey === 'device_telemetry') continue;
+        const from = rt.sources.get(srcKey)?.lastEvent;
+        const d = from ? mk(id, from, kinEvent) : null;
+        if (d) out.push(d);
+        continue;
+      }
+      const s = rt.sources.get('ais_digitraffic') ?? rt.sources.get('ais_aisstream');
+      if (s?.prevEvent && s.lastEvent) {
+        const d = mk(id, s.prevEvent, s.lastEvent);
+        if (d) out.push(d);
+      }
+    }
+    return out;
+  }
+
   private ensure(id: string): EntityRuntime {
     let rt = this.entities.get(id);
     if (!rt) {
       rt = {
+        sources: new Map(),
+        aisHistory: [],
+        identityState: createIdentityState(),
+        transponderState: createTransponderKindState(),
         kinState: { cusum: 0 },
         hardState: createHardAlertState(),
         dr: null,
@@ -373,4 +717,66 @@ export class TrustPipeline {
     this.timeline.push(a);
     if (this.timeline.length > 200) this.timeline.shift();
   }
+}
+
+function unavailableCheck(
+  entityId: string,
+  checkId: CheckResult['check_id'],
+  nowIso: string,
+  reason: string,
+): CheckResult {
+  return {
+    entity_id: entityId,
+    check_id: checkId,
+    status: 'unavailable',
+    anomaly_score: null,
+    severity: 'none',
+    observed_at: nowIso,
+    explanation: reason,
+    source_ids: [],
+    quality: 0,
+    freshness: 0,
+    reliability: 0,
+    missing_reason: reason,
+    hard_alert: false,
+  };
+}
+
+/**
+ * AIS position at time tMs, linearly interpolated between the two AIS samples that
+ * bracket it, when both lie within ±windowS. Returns null if no bracketing pair.
+ */
+export function interpolateAis(
+  history: PositionEvent[],
+  tMs: number,
+  windowS: number,
+): PositionEvent | null {
+  if (history.length === 0 || !Number.isFinite(tMs)) return null;
+  const w = windowS * 1000;
+  let before: PositionEvent | null = null;
+  let after: PositionEvent | null = null;
+  for (const h of history) {
+    const t = Date.parse(h.source_timestamp);
+    if (t <= tMs && tMs - t <= w && (!before || t > Date.parse(before.source_timestamp))) before = h;
+    if (t >= tMs && t - tMs <= w && (!after || t < Date.parse(after.source_timestamp))) after = h;
+  }
+  if (before && after) {
+    const ta = Date.parse(before.source_timestamp);
+    const tb = Date.parse(after.source_timestamp);
+    const u = tb === ta ? 0 : (tMs - ta) / (tb - ta);
+    return {
+      ...after,
+      position: {
+        ...after.position,
+        lat: before.position.lat + (after.position.lat - before.position.lat) * u,
+        lon: before.position.lon + (after.position.lon - before.position.lon) * u,
+      },
+      source_timestamp: new Date(tMs).toISOString(),
+      interpolated: true,
+    };
+  }
+  // Allow the nearest single sample if it is within a short tolerance (≤ 15 s).
+  const single = before ?? after;
+  if (single && Math.abs(Date.parse(single.source_timestamp) - tMs) <= 15_000) return single;
+  return null;
 }

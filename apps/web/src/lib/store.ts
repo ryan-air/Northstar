@@ -1,5 +1,9 @@
 import { create } from 'zustand';
-import type { AlertEvent, AppSnapshot, ScenarioId, VesselState, ViewMode } from './types';
+import type { AlertEvent, AppSnapshot, LabEvent, ScenarioId, ScenarioResult, VesselState, ViewMode } from './types';
+
+const adminToken = () =>
+  (import.meta as { env?: { VITE_NORTHSTAR_ADMIN_TOKEN?: string } }).env?.VITE_NORTHSTAR_ADMIN_TOKEN ??
+  'northstar-demo-admin';
 
 interface NorthstarStore {
   connected: boolean;
@@ -16,6 +20,15 @@ interface NorthstarStore {
   setMapStatus: (s: NorthstarStore['mapStatus']) => void;
   runScenario: (id: ScenarioId) => Promise<void>;
   setViewMode: (mode: ViewMode) => Promise<void>;
+  /** Where the last scenario actually landed (attacks go to simulated ships only). */
+  lastScenario: ScenarioResult | null;
+  /** Lab-return events (receiver-flagged windows, RF captures) for jump-to controls. */
+  labEvents: LabEvent[];
+  labVesselName: string | null;
+  loadLabEvents: () => Promise<void>;
+  seekLab: (iso: string) => Promise<boolean>;
+  /** Reset Lab + simulated ship positions only (live ships and security state untouched). */
+  resetLab: () => Promise<boolean>;
 }
 
 export const useStore = create<NorthstarStore>((set, get) => ({
@@ -25,6 +38,35 @@ export const useStore = create<NorthstarStore>((set, get) => ({
   selectionInitialized: false,
   selectedEvent: null,
   mapStatus: 'loading',
+  lastScenario: null,
+  labEvents: [],
+  labVesselName: null,
+  loadLabEvents: async () => {
+    try {
+      const r = await fetch('/api/lab/events');
+      if (!r.ok) return;
+      const b = (await r.json()) as { name?: string; events?: LabEvent[] };
+      set({ labEvents: b.events ?? [], labVesselName: b.name ?? null });
+    } catch {
+      /* lab events are optional */
+    }
+  },
+  resetLab: async () => {
+    const r = await fetch('/api/lab/reset', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${adminToken()}` },
+    });
+    if (r.ok) set({ lastScenario: null });
+    return r.ok;
+  },
+  seekLab: async (iso) => {
+    const r = await fetch('/api/lab/seek', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken()}` },
+      body: JSON.stringify({ t: iso }),
+    });
+    return r.ok;
+  },
   setConnected: (v) => set({ connected: v }),
   applySnapshot: (s) => {
     // Ignore non-snapshot payloads (e.g. 429 rate-limit JSON) that lack vessels[]
@@ -40,6 +82,11 @@ export const useStore = create<NorthstarStore>((set, get) => ({
   applyVessel: (v) => {
     const snap = get().snapshot;
     if (!snap || !Array.isArray(snap.vessels)) return;
+    // Per-ship updates stream for every feed; only apply those that belong to the current
+    // view (otherwise Lab ships flash on the Live view until the next snapshot drops them).
+    const mode = snap.view_mode ?? 'lab';
+    const origin = v.origin ?? (v.entity_id.startsWith('LIVE-') ? 'live' : 'lab');
+    if (mode !== 'both' && origin !== mode) return;
     const vessels = snap.vessels.some((x) => x.entity_id === v.entity_id)
       ? snap.vessels.map((x) => (x.entity_id === v.entity_id ? v : x))
       : [...snap.vessels, v];
@@ -56,17 +103,17 @@ export const useStore = create<NorthstarStore>((set, get) => ({
   selectEvent: (e) => set({ selectedEvent: e }),
   setMapStatus: (s) => set({ mapStatus: s }),
   runScenario: async (id) => {
-    const adminToken =
-      (import.meta as { env?: { VITE_NORTHSTAR_ADMIN_TOKEN?: string } }).env
-        ?.VITE_NORTHSTAR_ADMIN_TOKEN ?? 'northstar-demo-admin';
-    await fetch('/api/scenario', {
+    const res = await fetch('/api/scenario', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${adminToken}`,
+        authorization: `Bearer ${adminToken()}`,
       },
       body: JSON.stringify({ scenario: id, entity_id: get().selectedId ?? 'VESSEL-001' }),
     });
+    if (!res.ok) return;
+    const b = (await res.json().catch(() => ({}))) as { target?: string; retargeted_from?: string };
+    set({ lastScenario: id === 'reset' || id === 'normal' ? null : { scenario: id, target: b.target, retargeted_from: b.retargeted_from } });
   },
   setViewMode: async (mode) => {
     const res = await fetch('/api/view-mode', {
@@ -82,7 +129,9 @@ export const useStore = create<NorthstarStore>((set, get) => ({
 
 export function connectWs(): () => void {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const url = `${proto}://${location.host}/ws`;
+  const wsToken = (import.meta as { env?: Record<string, string | undefined> }).env
+    ?.VITE_NORTHSTAR_WS_TOKEN;
+  const url = `${proto}://${location.host}/ws${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`;
   let ws: WebSocket | null = null;
   let closed = false;
   let retry: ReturnType<typeof setTimeout> | undefined;

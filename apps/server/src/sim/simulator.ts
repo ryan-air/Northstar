@@ -155,7 +155,19 @@ export class Simulator {
       const base = this.toEvent(v, reported, 'ais_provider_a', 'provider_a', simTimeIso, [
         'fixture_gof_ais',
       ]);
+      // stale_clock_skew: target's timestamps shifted back 10 min → rejected at ingest.
+      if (this.scenario.staleClock && v.def.entity_id === this.scenario.targetId) {
+        base.source_timestamp = new Date(this.simTimeMs - 10 * 60_000).toISOString();
+      }
       aisA.push(base);
+      if (this.scenario.aisDisagree && v.def.entity_id === this.scenario.targetId) {
+        aisB.push(
+          this.toEvent(v, { lat: v.trueLat, lon: v.trueLon }, 'ais_provider_b', 'provider_b', simTimeIso, [
+            'fixture_gof_ais_b',
+          ]),
+        );
+      }
+      const isTarget = v.def.entity_id === this.scenario.targetId;
 
       // IMU is reconstructed from the simulated AIS kinematics, never scenario-forced.
       const dsog = v.sog_kn - previousSog;
@@ -163,8 +175,9 @@ export class Simulator {
         entity_id: v.def.entity_id,
         device_id: v.def.device_id,
         observed_at: simTimeIso,
-        accel_mps2: [dsog * 0.05, 0, 0],
-        gyro_rads: [0, 0, 0],
+        // IMU disagree: inertial sensor reports a hard turn/acceleration the GNSS track lacks.
+        accel_mps2: isTarget && this.scenario.imuDisagree ? [3.5, 2.5, 0] : [dsog * 0.05, 0, 0],
+        gyro_rads: isTarget && this.scenario.imuDisagree ? [0, 0, 0.35] : [0, 0, 0],
         labels: { simulated: true, fixture: true },
       });
 
@@ -173,15 +186,18 @@ export class Simulator {
         entity_id: v.def.entity_id,
         device_id: v.def.device_id,
         observed_at: simTimeIso,
-        satellite_count: 10 + Math.floor(this.rng() * 4),
-        c_n0_dbhz: Array.from({ length: 8 }, () => 35 + this.rng() * 10),
-        hdop: 1.2 + this.rng(),
-        agc: 30,
+        // GNSS jam: few satellites, weak C/N0, high AGC, receiver jamming flag on the target.
+        satellite_count: isTarget && this.scenario.jamming ? 3 : 10 + Math.floor(this.rng() * 4),
+        c_n0_dbhz: Array.from({ length: isTarget && this.scenario.jamming ? 3 : 8 }, () =>
+          isTarget && this.scenario.jamming ? 18 + this.rng() * 5 : 35 + this.rng() * 10,
+        ),
+        hdop: isTarget && this.scenario.jamming ? 7 + this.rng() * 3 : 1.2 + this.rng(),
+        agc: isTarget && this.scenario.jamming ? 85 : 30,
         pseudorange_residual_m: Array.from(
           { length: 8 },
           () => (this.rng() - 0.5) * 2,
         ),
-        interference_indicator: 'none',
+        interference_indicator: isTarget && this.scenario.jamming ? 'suspected_jamming' : 'none',
         labels: { simulated: true, fixture: true },
         missing_inputs: [],
       });
@@ -228,7 +244,11 @@ export class Simulator {
     v.trueLon += (this.rng() - 0.5) * 0.00001;
     v.lat = v.trueLat;
     v.lon = v.trueLon;
-    v.sog_kn = v.def.sog_kn * (0.95 + this.rng() * 0.1);
+    // Speed wanders within ±5% of the route speed but changes at most 0.03 kn/s
+    // (realistic for ships; the old per-tick re-roll tripped the acceleration check).
+    const target = v.def.sog_kn * (0.95 + this.rng() * 0.1);
+    const maxStep = 0.03 * dtS;
+    v.sog_kn += Math.max(-maxStep, Math.min(maxStep, target - v.sog_kn));
   }
 
   private reportedPosition(v: VesselSimState): { lat: number; lon: number } {
@@ -241,6 +261,8 @@ export class Simulator {
         return { lat: this.scenario.spoofLat, lon: this.scenario.spoofLon };
       }
     }
+    // AIS conflict: the primary feed reports the target ~2 km off; provider B reports truth.
+    if (this.scenario.aisDisagree) return destination(lat, lon, 0, 2_000);
     if (this.scenario.id === 'gradual_drift' && this.scenario.driftMeters > 0) {
       // Drift north inland gradually
       const p = destination(lat, lon, 10, this.scenario.driftMeters);

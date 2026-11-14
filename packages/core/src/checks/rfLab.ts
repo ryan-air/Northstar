@@ -26,6 +26,26 @@ export function checkRfLab(
     };
   }
 
+  // Instrumented vessel, but no capture covers this moment: say when the captures were.
+  if (result.status === 'unavailable') {
+    return {
+      entity_id: entityId,
+      check_id: 'rf_lab',
+      status: 'unavailable',
+      anomaly_score: null,
+      severity: 'none',
+      observed_at: nowIso,
+      explanation: result.reason ?? 'No RF capture covers this time.',
+      source_ids: [result.layout_id],
+      quality: 0,
+      freshness: 0,
+      reliability: 0,
+      missing_reason: 'No RF capture at this time',
+      evidence: { mode: result.mode },
+      hard_alert: false,
+    };
+  }
+
   const overlay = result.spoof_overlay
     ? ` Overlay: ${result.spoof_overlay}.`
     : '';
@@ -127,6 +147,25 @@ export function checkSpatialAoa(
     };
   }
 
+  if (result.status === 'unavailable') {
+    return {
+      entity_id: entityId,
+      check_id: 'spatial_aoa',
+      status: 'unavailable',
+      anomaly_score: null,
+      severity: 'none',
+      observed_at: nowIso,
+      explanation: result.reason ?? 'No RF capture covers this time.',
+      source_ids: [result.layout_id],
+      quality: 0,
+      freshness: 0,
+      reliability: 0,
+      missing_reason: 'No RF capture at this time',
+      evidence: {},
+      hard_alert: false,
+    };
+  }
+
   const dirs = result.aoa?.directions_deg ?? [];
   const cluster = result.aoa?.cluster_score;
   const coherence = result.aoa?.coherence;
@@ -149,7 +188,7 @@ export function checkSpatialAoa(
       anomaly_score: 0.85,
       severity: 'high',
       observed_at: result.observed_at,
-      explanation: `[2-ant AoA]${overlay} Single-direction-like spatial signature.${dirStr}${clusterStr}${coherenceStr} ${result.reason ?? ''}`.trim(),
+      explanation: `[${result.antennas}-ant AoA${result.mode === 'lab_iq_recorded' ? ', recorded' : ''}]${overlay} Single-direction-like spatial signature.${dirStr}${clusterStr}${coherenceStr} ${result.reason ?? ''}`.trim(),
       source_ids: ['spatial_aoa', 'rf_lab', result.layout_id],
       quality: 0.85,
       freshness: 1,
@@ -175,7 +214,7 @@ export function checkSpatialAoa(
       anomaly_score: 0.4,
       severity: 'medium',
       observed_at: result.observed_at,
-      explanation: `[2-ant AoA]${overlay}${dirStr}${clusterStr}${coherenceStr} ${result.reason ?? ''}`.trim(),
+      explanation: `[${result.antennas}-ant AoA${result.mode === 'lab_iq_recorded' ? ', recorded' : ''}]${overlay}${dirStr}${clusterStr}${coherenceStr} ${result.reason ?? ''}`.trim(),
       source_ids: ['spatial_aoa', 'rf_lab'],
       quality: 0.7,
       freshness: 1,
@@ -198,7 +237,7 @@ export function checkSpatialAoa(
     anomaly_score: 0,
     severity: 'none',
     observed_at: result.observed_at,
-    explanation: `[2-ant AoA] Spatial diversity consistent with distributed energy.${dirStr}${clusterStr}${coherenceStr} Absolute angle needs known baseline; relative phase used.`.trim(),
+    explanation: `[${result.antennas}-ant AoA${result.mode === 'lab_iq_recorded' ? ', recorded' : ''}] Spatial diversity consistent with distributed energy.${dirStr}${clusterStr}${coherenceStr} Absolute angle needs known baseline; relative phase used.`.trim(),
     source_ids: ['spatial_aoa', 'rf_lab', result.layout_id],
     quality: 0.9,
     freshness: 1,

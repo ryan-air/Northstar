@@ -34,6 +34,11 @@ export class DeviceRegistry {
     return this.devices.get(deviceId);
   }
 
+  /** Active (non-revoked) devices bound to an entity. */
+  activeForEntity(entityId: string): DeviceEnrollment[] {
+    return [...this.devices.values()].filter((d) => d.entity_id === entityId && !d.revoked_at);
+  }
+
   getByKeyId(keyId: string): DeviceEnrollment | undefined {
     return this.byKeyId.get(keyId);
   }

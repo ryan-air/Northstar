@@ -15,6 +15,44 @@ export interface KinematicsConfig {
   drift_cusum_threshold: number;
   drift_cusum_slack_m: number;
   vessel_class_limits: Record<VesselClass, ClassLimits>;
+  /**
+   * v2 (all optional — absent means exact v1 behaviour):
+   * skip COG-derived checks (turn rate, course mismatch) below this SOG.
+   */
+  min_cog_sog_kn?: number;
+  /** v2: prefer the AIS ROT field, then heading, for turn rate. */
+  prefer_rot_field?: boolean;
+  /** v2: CUSUM constants moved out of code. */
+  cusum?: KinematicsCusumConfig;
+}
+
+export interface KinematicsCusumConfig {
+  /** Fixed residual allowance (m). */
+  slack_m: number;
+  /** Additional allowance proportional to dt × speed (fraction of distance travelled). */
+  speed_slack_frac: number;
+  /** Residual normaliser (m per CUSUM unit). */
+  scale_m: number;
+  /** Per-step drift term subtracted from the CUSUM. */
+  k: number;
+  /** Multiplicative decay applied to the running CUSUM each step (1 = none). */
+  decay: number;
+  /** Warning threshold; fail at 1.5×. */
+  threshold: number;
+  /** Reset CUSUM after a reporting gap longer than this. */
+  reset_gap_s: number;
+  /**
+   * Which prediction residual feeds the CUSUM. 'min' (v1 behaviour) takes the smaller of
+   * the SOG/COG and constant-displacement predictions — the latter absorbs any constant
+   * drift. 'reported' uses only the vessel's own SOG/COG prediction.
+   */
+  residual?: 'min' | 'reported';
+  /**
+   * How the SOG/COG prediction is formed. 'previous' (default, v1/earlier v2): previous
+   * report's SOG/COG only. 'trapezoid': average of the previous and current reported
+   * velocity vectors — follows steady turns and speed changes between sparse reports.
+   */
+  prediction?: 'previous' | 'trapezoid';
 }
 
 export interface TrackPoint {
@@ -142,7 +180,15 @@ export function checkKinematics(
     findings.push(`Implied speed ${impliedKn.toFixed(1)} kn exceeds plausible range.`);
   }
 
-  if (distM > 50 && current.course_over_ground_deg != null) {
+  const v2 = config.min_cog_sog_kn != null;
+  const cogUsable = (e: PositionEvent) =>
+    !v2 || (e.speed_over_ground_knots != null && e.speed_over_ground_knots >= config.min_cog_sog_kn!);
+  if (v2 && !cogUsable(current)) evidence.cog_checks_skipped = 'sog_below_min_cog_sog';
+  // v2: over a gap longer than max_dt_s the vessel may have manoeuvred — a single
+  // reported COG says nothing about the averaged displacement bearing.
+  const gapOk = !v2 || dtS <= config.max_dt_s;
+  if (v2 && !gapOk) evidence.course_check_skipped = 'gap_exceeds_max_dt';
+  if (distM > 50 && current.course_over_ground_deg != null && cogUsable(current) && gapOk) {
     const courseMismatch = Math.abs(angleDiffDeg(current.course_over_ground_deg, dispBearing));
     evidence.reported_derived_course_diff_deg = courseMismatch;
     if (courseMismatch > 45) {
@@ -167,9 +213,36 @@ export function checkKinematics(
   }
 
   // Turn rate
-  if (previous.course_over_ground_deg != null && current.course_over_ground_deg != null) {
+  let rotDegMin: number | null = null;
+  if (v2 && config.prefer_rot_field && current.rot_deg_min != null && Number.isFinite(current.rot_deg_min)) {
+    rotDegMin = Math.abs(current.rot_deg_min);
+    evidence.rot_source = 'ais_rot';
+  } else if (previous.interpolated || current.interpolated) {
+    // Interpolated (replay gap-fill) points carry the previous sample's heading/COG, so a
+    // heading/COG-derived turn rate across them is meaningless.
+    evidence.rot_source = 'skipped_interpolated';
+  } else if (
+    v2 &&
+    config.prefer_rot_field &&
+    previous.heading_deg != null &&
+    current.heading_deg != null &&
+    cogUsable(previous) &&
+    cogUsable(current)
+  ) {
+    rotDegMin = (Math.abs(angleDiffDeg(previous.heading_deg, current.heading_deg)) / dtS) * 60;
+    evidence.rot_source = 'heading';
+  } else if (
+    previous.course_over_ground_deg != null &&
+    current.course_over_ground_deg != null &&
+    cogUsable(previous) &&
+    cogUsable(current)
+  ) {
     const dCog = Math.abs(angleDiffDeg(previous.course_over_ground_deg, current.course_over_ground_deg));
-    const rot = (dCog / dtS) * 60;
+    rotDegMin = (dCog / dtS) * 60;
+    if (v2) evidence.rot_source = 'cog';
+  }
+  if (rotDegMin != null) {
+    const rot = rotDegMin;
     evidence.rot_deg_min = rot;
     if (rot > limits.max_rot_deg_min * 2.5) {
       anomaly = Math.max(anomaly, 0.85);
@@ -184,8 +257,25 @@ export function checkKinematics(
   const nextState = { ...state };
   const predictionResiduals: number[] = [];
   if (previous.speed_over_ground_knots != null && previous.course_over_ground_deg != null) {
-    const predDist = knotsToMps(previous.speed_over_ground_knots) * dtS;
-    const predBearing = previous.course_over_ground_deg;
+    let predDist = knotsToMps(previous.speed_over_ground_knots) * dtS;
+    let predBearing = previous.course_over_ground_deg;
+    if (
+      config.cusum?.prediction === 'trapezoid' &&
+      current.speed_over_ground_knots != null &&
+      current.course_over_ground_deg != null
+    ) {
+      const vec = (sog: number, cog: number) => {
+        const r = (cog * Math.PI) / 180;
+        return [knotsToMps(sog) * Math.sin(r), knotsToMps(sog) * Math.cos(r)] as const;
+      };
+      const a = vec(previous.speed_over_ground_knots, previous.course_over_ground_deg);
+      const b = vec(current.speed_over_ground_knots, current.course_over_ground_deg);
+      const e = (a[0] + b[0]) / 2;
+      const n = (a[1] + b[1]) / 2;
+      predDist = Math.hypot(e, n) * dtS;
+      predBearing = ((Math.atan2(e, n) * 180) / Math.PI + 360) % 360;
+      evidence.prediction = 'trapezoid';
+    }
     // predicted point
     const { destination } = requireDestination();
     const pred = destination(
@@ -218,18 +308,50 @@ export function checkKinematics(
     predictionResiduals.push(dispResidual);
   }
 
-  if (predictionResiduals.length > 0) {
-    const predictionResidual = Math.min(...predictionResiduals);
-    const residual = Math.max(0, predictionResidual - config.drift_cusum_slack_m);
-    nextState.cusum = Math.max(0, (state.cusum || 0) + residual / 40 - 0.4);
+  const cz = config.cusum;
+  if (cz && dtS > cz.reset_gap_s) {
+    // Long gap: prediction is meaningless, start the accumulator over.
+    nextState.cusum = 0;
+    evidence.drift_cusum = 0;
+    evidence.cusum_reset = `gap ${dtS.toFixed(0)} s > ${cz.reset_gap_s} s`;
+  } else if (
+    cz &&
+    config.min_cog_sog_kn != null &&
+    (previous.speed_over_ground_knots ?? 0) < config.min_cog_sog_kn &&
+    (current.speed_over_ground_knots ?? 0) >= config.min_cog_sog_kn
+  ) {
+    // Stationary → underway transition (departure): a constant-velocity prediction from
+    // SOG≈0 is meaningless. Hold the accumulator; jump/implied-speed checks still run.
+    nextState.cusum = cz.decay * (state.cusum || 0);
+    evidence.drift_cusum = nextState.cusum;
+    evidence.cusum_hold = 'stationary_to_underway';
+  } else if (predictionResiduals.length > 0) {
+    const reportedOnly = cz?.residual === 'reported' && evidence.cross_track_m != null;
+    const predictionResidual = reportedOnly
+      ? (evidence.cross_track_m as number)
+      : Math.min(...predictionResiduals);
+    let threshold = config.drift_cusum_threshold;
+    if (cz) {
+      const speedMps = knotsToMps(
+        Math.max(previous.speed_over_ground_knots ?? 0, current.speed_over_ground_knots ?? 0),
+      );
+      const slack = cz.slack_m + cz.speed_slack_frac * dtS * speedMps;
+      const residual = Math.max(0, predictionResidual - slack);
+      nextState.cusum = Math.max(0, cz.decay * (state.cusum || 0) + residual / cz.scale_m - cz.k);
+      threshold = cz.threshold;
+      evidence.cusum_slack_m = slack;
+    } else {
+      const residual = Math.max(0, predictionResidual - config.drift_cusum_slack_m);
+      nextState.cusum = Math.max(0, (state.cusum || 0) + residual / 40 - 0.4);
+    }
     evidence.drift_cusum = nextState.cusum;
 
-    if (nextState.cusum > config.drift_cusum_threshold * 1.5) {
+    if (nextState.cusum > threshold * 1.5) {
       anomaly = Math.max(anomaly, 0.9);
       findings.push(
         `Gradual trajectory drift detected (CUSUM ${nextState.cusum.toFixed(2)}): position diverges from kinematic prediction.`,
       );
-    } else if (nextState.cusum > config.drift_cusum_threshold) {
+    } else if (nextState.cusum > threshold) {
       anomaly = Math.max(anomaly, 0.65);
       findings.push(`Emerging trajectory drift (CUSUM ${nextState.cusum.toFixed(2)}).`);
     }

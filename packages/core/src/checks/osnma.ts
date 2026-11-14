@@ -61,7 +61,7 @@ export function checkOsnma(
       observed_at: nowIso,
       explanation:
         result.mode === 'protocol_verification_demo'
-          ? '[Protocol verification demo] OSNMA authentication pending (delayed auth / TESLA chain).'
+          ? '[ICD test vector] OSNMA authentication pending (delayed auth / TESLA chain).'
           : 'OSNMA authentication pending (delayed auth / TESLA chain).',
       source_ids: ['osnma'],
       quality: 0.5,
@@ -74,7 +74,11 @@ export function checkOsnma(
   }
 
   const demo =
-    result.mode === 'protocol_verification_demo' ? '[Protocol verification demo] ' : '';
+    result.mode === 'protocol_verification_demo'
+      ? '[ICD test vector] '
+      : result.mode === 'synthetic'
+        ? '[Synthetic OSNMA data] '
+        : '';
   const sharedFleet =
     result.mode === 'protocol_verification_demo'
       ? ' Shared ICD/nav-data auth applied to Hist Lab fleet — not a per-vessel RF receiver.'

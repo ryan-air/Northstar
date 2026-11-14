@@ -1,0 +1,146 @@
+{
+  "version": "thresholds.v2",
+  "vessel_class_limits": {
+    "cargo": {
+      "max_sog_kn": 28,
+      "max_accel_kn_s": 0.15,
+      "max_rot_deg_min": 20,
+      "max_jump_m": 800
+    },
+    "tanker": {
+      "max_sog_kn": 22,
+      "max_accel_kn_s": 0.1,
+      "max_rot_deg_min": 15,
+      "max_jump_m": 800
+    },
+    "passenger": {
+      "max_sog_kn": 32,
+      "max_accel_kn_s": 0.2,
+      "max_rot_deg_min": 25,
+      "max_jump_m": 800
+    },
+    "fishing": {
+      "max_sog_kn": 18,
+      "max_accel_kn_s": 0.25,
+      "max_rot_deg_min": 40,
+      "max_jump_m": 600
+    },
+    "tug": {
+      "max_sog_kn": 16,
+      "max_accel_kn_s": 0.3,
+      "max_rot_deg_min": 45,
+      "max_jump_m": 500
+    },
+    "pleasure": {
+      "max_sog_kn": 40,
+      "max_accel_kn_s": 0.4,
+      "max_rot_deg_min": 50,
+      "max_jump_m": 500
+    },
+    "other": {
+      "max_sog_kn": 30,
+      "max_accel_kn_s": 0.25,
+      "max_rot_deg_min": 30,
+      "max_jump_m": 800
+    }
+  },
+  "kinematics": {
+    "min_dt_s": 0.5,
+    "max_dt_s": 360,
+    "uncertain_dt_skip": true,
+    "drift_cusum_threshold": 4.0,
+    "drift_cusum_slack_m": 20,
+    "min_cog_sog_kn": 2.0,
+    "prefer_rot_field": true,
+    "cusum": {
+      "slack_m": 40,
+      "speed_slack_frac": 0.05,
+      "scale_m": 40,
+      "k": 0.4,
+      "decay": 0.9,
+      "threshold": 4.0,
+      "reset_gap_s": 360,
+      "residual": "reported",
+      "prediction": "trapezoid"
+    },
+    "cusum_calibration_note": "Calibrated on the 2026-11-12 split only (eval-v1). Calibration data is sparse (median report gap ~37 min), so FP rates were \u22640.03% for every swept variant; the most sensitive variant was chosen and judged on the held-out split."
+  },
+  "geographic": {
+    "shore_buffer_m": 150,
+    "port_buffer_m": 400,
+    "warning_inland_m": 80,
+    "fail_inland_m": 300,
+    "distance_mode": "edge",
+    "use_hull_tolerance": true,
+    "default_hull_offset_m": 30,
+    "default_accuracy_m": 50,
+    "land_file": "land_osm_gof.geojson",
+    "ports_file": "ports_v2.geojson",
+    "fallback_land_file": "land.geojson",
+    "fallback_ports_file": "ports.geojson"
+  },
+  "neighbors": {
+    "radius_nm": 8,
+    "max_age_s": 90,
+    "conflict_distance_m": 500,
+    "min_independent_sources": 1
+  },
+  "crypto": {
+    "freshness_window_s": 60,
+    "max_clock_skew_s": 30,
+    "duplicate_cache_size": 4096
+  },
+  "imu": {
+    "accel_noise_mps2": 0.05,
+    "gyro_noise_rads": 0.002,
+    "bias_random_walk": 0.0001,
+    "residual_fail_sigma": 5,
+    "residual_warn_sigma": 3
+  },
+  "gnss_diagnostics": {
+    "min_satellites": 4,
+    "min_c_n0_dbhz": 25,
+    "max_hdop": 5,
+    "jamming_agc_delta": 20
+  },
+  "region": {
+    "name": "gulf_of_finland",
+    "bbox": {
+      "minLon": 22.0,
+      "minLat": 59.0,
+      "maxLon": 31.0,
+      "maxLat": 61.0
+    }
+  },
+  "fleet_coherence": {
+    "min_vessels": 4,
+    "jump_m": 1000,
+    "max_dt_s": 600,
+    "stationary_sog_kn": 0.5,
+    "cluster_radius_m": 1500,
+    "airport_radius_m": 3000,
+    "coherent_bearing_tol_deg": 20,
+    "coherent_magnitude_ratio": 1.6
+  },
+  "identity": {
+    "history": 8,
+    "clone_speed_factor": 1.5,
+    "clone_max_dt_s": 900,
+    "static_window_s": 86400
+  },
+  "signed_vs_ais": {
+    "warn_m": 500,
+    "fail_m": 2000,
+    "interp_window_s": 180
+  },
+  "validation": {
+    "ais_stale_after_s": 600,
+    "device_stale_after_s": 120,
+    "max_future_skew_s": 30,
+    "lab_stale_after_s": 120
+  },
+  "state": {
+    "per_source": true,
+    "ais_history": 32
+  }
+}

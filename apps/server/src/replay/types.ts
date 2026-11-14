@@ -12,6 +12,22 @@ export interface ReplayRecord {
   provider_id: string;
   name?: string;
   shipType?: number;
+  /** P1.1 additive fields (absent in recordings made before this change). */
+  rot?: number | null;
+  posAcc?: boolean | null;
+  raim?: boolean | null;
+  /** AIS UTC second field (0–59; 60–63 = unavailable). */
+  ais_timestamp_s?: number | null;
+  callSign?: string;
+  imo?: number;
+  destination?: string;
+  draught?: number;
+  posType?: number;
+  referencePointA?: number;
+  referencePointB?: number;
+  referencePointC?: number;
+  referencePointD?: number;
+  /** Secondary-feed rows (U6) carry a distinct source tag, e.g. 'aisstream'. */
 }
 
 export interface ReplayManifest {

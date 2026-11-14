@@ -32,6 +32,8 @@ export interface CheckResult {
   missing_reason: string | null;
   evidence?: Record<string, unknown>;
   hard_alert: boolean;
+  /** live | recorded | simulated | demo (P0.5) */
+  evidence_class?: 'live' | 'recorded' | 'simulated' | 'demo';
 }
 
 export interface TrustAssessment {
@@ -39,10 +41,15 @@ export interface TrustAssessment {
   trust_score: number;
   trust_band: TrustBand;
   evidence_coverage: number;
+  /** Coverage from live/recorded evidence only (P0.6). */
+  verified_evidence_coverage?: number;
   coverage_band: string;
   available_checks: number;
   expected_checks: number;
   hard_alerts: string[];
+  /** 'non_vessel_transponder' for test units / base stations / AtoN (label only). */
+  transponder_kind?: 'vessel' | 'non_vessel_transponder';
+  transponder_kind_reasons?: string[];
   explanation: string;
   assessed_at: string;
   config_version: string;
@@ -133,4 +140,18 @@ export interface AppSnapshot {
   alerts: AlertEvent[];
   timeline: AlertEvent[];
   selected_entity_id?: string | null;
+  injection?: { policy: 'simulated_only'; simulated_ships: string[]; lab_vessel_id: string | null };
+}
+
+export interface LabEvent {
+  kind: string;
+  start: string;
+  end: string;
+  detail: string;
+}
+
+export interface ScenarioResult {
+  scenario: string;
+  target?: string;
+  retargeted_from?: string;
 }
