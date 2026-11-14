@@ -1,152 +1,130 @@
 # Northstar
 
-**One-line pitch:** Northstar is a real-time trust engine for navigation data. It combines cryptographic authentication, sensor and trajectory consistency, and independent observations to identify suspicious positions and explain exactly why they should not be trusted.
+**Northstar is a real-time trust engine for maritime navigation data.** It checks whether a ship's reported position can be believed by combining trajectory physics, geography, independent sensors, cryptographically signed onboard telemetry and Galileo OSNMA, and it explains exactly which evidence agrees and which does not.
 
-> Not a certified navigation, safety, or collision-avoidance system. Trust scores are heuristic integrity estimates — **not** probabilities that a position is genuine.
+> Not a certified navigation, safety or collision-avoidance system. Trust scores are heuristic integrity estimates, **not** probabilities that a position is genuine.
 
-## Stack
+## What you see
 
-- **Monorepo (npm workspaces):** TypeScript
-- **Backend:** Fastify + WebSocket (`apps/server`)
-- **Frontend:** React + Vite + MapLibre (`apps/web`) — ECDIS-inspired dark ops console
-- **Device gateway sim:** Ed25519 signed telemetry (`apps/device-sim`)
-- **Core:** detection, fusion, crypto (`packages/core`) + Zod contracts (`packages/contracts`)
-- **OSNMA sidecar:** Python OSNMAlib protocol-verification demo (`sidecars/osnma`)
+The dashboard has two views (top-right toggle):
 
-Demo region: **Gulf of Finland** (simulation-labelled fixtures).
+| View | Ships | Purpose |
+|---|---|---|
+| **Live** | Real AIS traffic in the Gulf of Finland from Fintraffic Digitraffic's real-time stream | Shows how Northstar behaves on real, current traffic with only public AIS evidence |
+| **Lab** | Recorded AIS traffic, three **simulated** ships, and one **lab vessel** with independent sensor recordings | Shows the full evidence stack and lets you run attacks |
+
+**Lab vessel.** Its independent sensor recordings were **received from a lab at UIUC after we reached out on Friday**. They include GNSS receiver diagnostics, heading and speed-log data for GNSS-free dead reckoning, multi-element RF captures, independent radar observations, a second AIS network and an independent onboard receiver. The data is private: it is **not in this repository** and is loaded from a local, gitignored folder when present. Attestation and OSNMA inputs for this vessel are synthetic and are labelled as such everywhere.
+
+**Attacks only ever hit simulated ships.** Every attack button injects into one of the three simulated ships. Recorded and live ships never receive injected data, and the API redirects any attempt (`target` / `retargeted_from` in the response).
+
+### Panels
+
+- **Left:** fleet metrics, the selected vessel (trust score, origin tag, verified coverage), lab-vessel events with *Jump* buttons, and the vessel list.
+- **Map:** trust-coloured markers, tracks (muted for normal traffic, coloured for suspicious or critical), and a ring on the selected vessel.
+- **Right, Events:** trust changes and alerts, including clock-driven alerts that need no position report (receiver jamming, receiver spoofing flag, AIS silent while radar still tracks the vessel).
+- **Right, Evidence:** every check for the selected vessel with its status and where its evidence comes from (`recorded`, `live`, `simulated`, `synthetic`). Layers a ship type can never have are hidden.
+- **Right, Security:** verify the tamper-evident audit chain, inspect device identity, run a freshness test (a signed message without the one-time challenge must be rejected), and review recent security events and controls.
+- **Bottom:** navigation attacks (spoof, drift, AIS conflict, GNSS jam, IMU disagreement), security attacks (signature tamper, replay, clock skew, OSNMA, RF spoof), *Normal* to stop an attack, and *Reset Lab* to rewind the Lab.
+
+## Checks (evidence layers)
+
+| Layer | What it compares |
+|---|---|
+| Kinematics | Reported motion vs physics (jumps, speed, turn rate, slow drift) |
+| Geographic | Position vs coastline, ports and restricted areas |
+| Independent observation | Position vs independent radar/SAR fixes of the same vessel, or nearby traffic |
+| AIS cross-feed | Two AIS networks reporting the same vessel |
+| GNSS receiver | Satellites, signal strength, AGC, receiver jamming/spoofing flags |
+| Dead reckoning / IMU | Gyro heading + speed log (GNSS-free), anchored on independent fixes |
+| Galileo OSNMA | Navigation-message authentication |
+| Device signature | Ed25519 / ECDSA signature on onboard telemetry |
+| Hardware attestation | Device key provenance |
+| RF capture / Angle of arrival | Multi-antenna phase: real satellites arrive from many directions, a spoofer from one |
+| Signed track vs AIS | Signed onboard position vs broadcast AIS |
+| Fleet coherence | Area-wide unexplained displacement (many ships shifted at once) |
+| Identity | MMSI format, country code, clones, static-data changes |
+
+Each check carries an evidence class. **Verified coverage** counts only `live` and `recorded` evidence, so simulated or synthetic inputs never inflate it.
 
 ## Quick start
 
 ```bash
 npm install
-npm run build -w @northstar/contracts && npm run build -w @northstar/core
-npm run gen-certs   # optional TLS material into ./certs (gitignored)
-cp .env.example .env
+npm run build
+npm run dev        # server, dashboard, signed-telemetry device simulator, OSNMA sidecar
+```
 
-# optional — dual-ant lab IQ / AoA (requires local capture01.sink.gz)
-python3 -m venv sidecars/rf/.venv && sidecars/rf/.venv/bin/pip install -r sidecars/rf/requirements.txt
-python3 scripts/rf_extract_clip.py --seconds 0.5
-sidecars/rf/.venv/bin/python sidecars/rf/analyze_aoa.py
+Open http://127.0.0.1:5173. Or run the parts separately:
 
-# terminal 1 — API + simulator (creates local .northstar/shore keys on first run)
+```bash
 npm run dev -w @northstar/server
-
-# terminal 2 — dashboard
 npm run dev -w @northstar/web
-
-# terminal 3 — signed device telemetry (generates .northstar/keys + enrols public key)
 npm run dev -w @northstar/device-sim
 ```
 
-Shore + device **private** keys live under `.northstar/` (gitignored). Committed fixtures ship empty so every clone can generate its own keys. If you see `Revocation shore_sig invalid` or `device_already_enrolled` after pulling someone else’s local state, reset:
+**Without the private data** (any fresh clone), everything still runs: the Lab uses the built-in simulated fleet, Live uses real AIS, and the coastline falls back to simplified polygons (geographic alarms are then capped at *warning*). Team members with access place the private files in the same local, gitignored locations.
+
+Private keys are generated locally under `.northstar/` (gitignored) on first run.
+
+## Results
+
+Measured numbers live in [EVALUATION.md](EVALUATION.md). In short:
+
+- **Public AIS (held-out day):** 0.6% of ship reports flagged suspicious or worse; area spoofing ~98% detected; teleports 90–100%; the four hardest small attacks (100 m offsets, slow drift) remain weak from AIS alone.
+- **Lab vessel:** during a real GNSS spoofing event in the recording, every spoofed report was flagged and independently confirmed by radar, GNSS-free dead reckoning, the receiver's own flags and an RF capture. A smooth fake track that AIS alone misses was caught on every report once the independent sensors were used. A second GNSS receiver on the same ship did **not** help: it was spoofed too.
+- Single vessel, single recording window: a case study, not a statistical evaluation.
+
+## Tests and tooling
 
 ```bash
-printf '' > data/fixtures/revocation.jsonl
-rm -f data/fixtures/revocation.jsonl.head.json data/fixtures/audit.checkpoint.json
-printf '' > data/fixtures/audit.jsonl
-echo '[]' > data/fixtures/devices.json
-# optional: rm -rf .northstar   # only if you want brand-new local keys
-```
-
-**Both view:** live Digitraffic (partial coverage) + Hist Lab. One **FULL-STACK** Lab vessel carries crypto + OSNMA ICD + dual-antenna AoA. Raw `*.sink.gz` is gitignored.
-
-Open http://127.0.0.1:5173
-
-## Demo (≈3 minutes)
-
-See [DEMO_SCRIPT.md](DEMO_SCRIPT.md). Short version:
-
-1. Confirm the view badge and healthy fleet trust (Hist Lab = recorded ships + three labelled synthetic ships).
-2. Run **Sudden spoof / teleport** — it lands on a synthetic ship (attacks are never injected into recorded or live vessels); inland jump, trust drop, evidence on kinematics + geographic.
-3. **Reset**, then **Gradual drift**.
-4. **Signed telemetry tamper** and **Replayed signed message** (device-sim must be running).
-5. Inspect OSNMA / IMU / GNSS rows — labelled demo/simulated/unavailable as appropriate.
-
-Measured numbers (false alarms, attack recall with 95% ranges): [EVALUATION.md](EVALUATION.md).
-Lab data: `npm run lab:import -- --workbook <xlsx> --files <dir>` (template in `docs/lab-data/`).
-Dense AIS recording for evaluation: `npm run record:stream` (Digitraffic MQTT, no key).
-
-## Tests
-
-```bash
-npm test
-npm run eval
+npm test              # unit, integration and security tests
 npm run typecheck
-npm run build
-npm run check-tiles   # optional map tile reachability
+npm run fuzz          # seeded fuzzing of every untrusted-input boundary
+npm run sbom          # CycloneDX software bill of materials
+npm run attacker      # live probes against a running server (PASS = attack rejected)
+npm run eval:pipeline # evaluation harness (needs the private evaluation snapshot)
+npm run eval:gates    # fail if false-alarm or recall gates are crossed
 ```
 
-## Security posture
+CI runs build, typecheck, tests, fuzzing, `npm audit` and the SBOM; evaluation and lab-import steps run only where the private data is present.
 
-See [THREAT_MODEL.md](THREAT_MODEL.md) for adversaries, controls, and known limitations.
+## Configuration
 
-- Rejected / forged telemetry never updates vessel tracks (forensics only).
-- Devices are bound to a single `entity_id` and key; challenge nonces require a signed request.
-- Device-sim signs an independent onboard track, compared to AIS via `signed_vs_ais`.
-  > **Superseded:** the onboard track is a noisy copy of the vessel's own recorded AIS, not an independent receiver (U12). Its checks are labelled `evidence_class: simulated`, and `verified_evidence_coverage` excludes them. See [EVALUATION.md](EVALUATION.md).
-- Device enrolment requires the admin bearer or the enrol token (`NORTHSTAR_DATA_DIR/enrol.token`); one active device per vessel.
-- Admin routes require `Authorization: Bearer $NORTHSTAR_ADMIN_TOKEN` (demo default `northstar-demo-admin`).
-
-```bash
-npm run attacker          # live probes (PASS = attack rejected)
-npm run eval:real         # kinematics FP/FN on the frozen snapshot → data/fixtures/eval_metrics.json
-npm run eval:pipeline     # full pipeline + attack library → data/fixtures/eval_pipeline_metrics.json
-npm run eval:gates        # fail if FPR / recall cross config/eval_gates.json
-```
-
-Configs: `NORTHSTAR_THRESHOLDS` / `NORTHSTAR_FUSION` = `v2` (default) or `v1`. Runtime state lives in `NORTHSTAR_DATA_DIR` (default `.northstar/data`, seeded from `data/` on first run). Measured numbers: [EVALUATION.md](EVALUATION.md).
+| Variable | Purpose |
+|---|---|
+| `NORTHSTAR_ADMIN_TOKEN` | Admin bearer token (all scopes). Without it the demo token works only on a loopback bind; on a network address the server refuses to start. |
+| `NORTHSTAR_ADMIN_TOKENS` | Scoped admin tokens: `name:scope+scope:token;…` (scenario, rf, osnma, audit, devices, demo) |
+| `NORTHSTAR_WS_TOKEN` | Require a token on the dashboard WebSocket |
+| `NORTHSTAR_TLS_ENABLED` / `NORTHSTAR_MTLS_ENABLED` | TLS / mutual-TLS device server; plain-HTTP telemetry is refused on network binds |
+| `NORTHSTAR_LIVE_STREAM` | `false` to use the Digitraffic REST poll instead of the real-time stream |
+| `NORTHSTAR_LAB_SIM_SHIPS` | Number of simulated attack-target ships in the Lab (default 3) |
+| `NORTHSTAR_THRESHOLDS` / `NORTHSTAR_FUSION` | `v2` (default) or `v1` detection configs |
+| `NORTHSTAR_DATA_DIR` | Runtime state (default `.northstar/data`) |
+| `AISSTREAM_API_KEY` | Optional second live AIS feed |
 
 ## Documentation
 
 | Doc | Purpose |
-|-----|---------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Module boundaries & data flow |
-| [SECURITY.md](SECURITY.md) | Threat model, keys, claims |
-| [TESTING.md](TESTING.md) | Scenarios & evaluation |
-| [EVALUATION.md](EVALUATION.md) | Measured FPR / recall from the frozen dataset (source of truth for numbers) |
-| [DECISIONS.md](DECISIONS.md) | Confirmed choices |
-| [BLOCKERS.md](BLOCKERS.md) | Missing hardware / credentials |
-| [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Phase status |
+|---|---|
+| [SECURITY.md](SECURITY.md) | Security controls, threat model, data handling |
+| [EVALUATION.md](EVALUATION.md) | Measured false-alarm and detection rates |
+| [THREAT_MODEL.md](THREAT_MODEL.md) | Adversaries, controls, limitations |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Module boundaries and data flow |
 | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) | Judge-facing demo |
-| [COMPARISON.md](COMPARISON.md) | Vs AIM+/A-Shield/DIDI — honest capability matrix |
-| [SECURITY_DESIGN.md](SECURITY_DESIGN.md) | Assets, adversaries, controls, residual risk |
 | [HARDWARE_KEYS.md](HARDWARE_KEYS.md) | SoftHSM / YubiKey PKCS#11 device signing |
 
-## Live + Hist Lab (Digitraffic)
+## Stack
 
-On startup the server:
+TypeScript monorepo (npm workspaces): Fastify + WebSocket server (`apps/server`), React + Vite + MapLibre dashboard (`apps/web`), signed-telemetry device simulator (`apps/device-sim`), detection/fusion/crypto core (`packages/core`), Zod contracts (`packages/contracts`), Python OSNMAlib sidecar (`sidecars/osnma`).
 
-1. **Live** — polls Fintraffic Digitraffic AIS (`LIVE-*`)
-2. **Hist Lab** — replays recorded Digitraffic AIS from `data/replay/gof_ais.jsonl` (`LAB-*`), and keeps appending new samples every 15s
+## What Northstar claims, and what it does not
 
-Digitraffic’s REST `from`/`to` only returns the *latest* fix per ship, so multi-point history is built by recording. A seed capture is committed under `data/replay/`.
+- Detects **evidence consistent with** spoofing, jamming and data manipulation, and says which sources support it.
+- Verifies **provenance and integrity** of signed device telemetry.
+- Authenticates Galileo **navigation-message data** where OSNMA evidence exists (the lab vessel's OSNMA inputs are synthetic and labelled).
 
-Top-bar toggle:
+It does **not** claim that every GNSS fix is authenticated, that OSNMA proves the position, that public AIS is authenticated, or that the trust score is a calibrated probability.
 
-- **Live** — real-time Digitraffic only  
-- **Hist Lab** — recorded Digitraffic replay + attack overlays  
-- **Both** — cyan live rings + amber hist lab  
+## Data and attribution
 
-**Cyber tab** (right panel): OSNMAlib ICD verify, rotate/revoke + shore-signed CRL, **required** challenge nonce, audit chain + shore checkpoint, optional mTLS device plane, SoftHSM/YubiKey PKCS#11 (`HARDWARE_KEYS.md`).
-
-```bash
-npm run setup:osnma   # once — clones Algafix/OSNMA + venv
-npm run dev           # starts server, web, device-sim, OSNMA sidecar
-```
-
-OSNMA = real ICD test-vector crypto (TESLA/MAC). GNSS/IMU still fixtures. Device Ed25519 is signed over the historical Digitraffic target.
-
-Optional second live feed: `AISSTREAM_API_KEY` (aisstream.io).
-
-## Correct claims
-
-- Detects **evidence consistent with** spoofing / jamming-like degradation.
-- Verifies **provenance and integrity** of signed device telemetry (Ed25519).
-- Authenticates supported Galileo **navigation-message data** when OSNMA evidence exists (demo path is labelled; live = not connected).
-- Estimates **position integrity** from multiple sources with separate **evidence coverage**.
-
-Does **not** claim: every GNSS fix is cryptographically authenticated; OSNMA proves PVT; ordinary AIS is end-to-end authenticated; trust score is a calibrated probability.
-
-## License / data
-
-Simplified coastline and port polygons are for demo integrity checks only — not ENC-grade. OpenSeaMap / Carto tiles used when reachable; offline GeoJSON fallback otherwise. Attribution: OpenStreetMap / Natural Earth / OpenSeaMap / CARTO as applicable.
+Live AIS: Fintraffic / Digitraffic (CC BY 4.0). Map tiles: OpenStreetMap contributors, CARTO, OpenSeaMap. Lab vessel sensor data: received from a lab at UIUC; private and not redistributed.

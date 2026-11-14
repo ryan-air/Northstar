@@ -1,42 +1,27 @@
-# Northstar — Judge demo script
+# Northstar — Demo script
 
-**Setup:** `npm run setup:osnma` (once) · extract RF once (`python3 scripts/rf_extract_clip.py && sidecars/rf/.venv/bin/python sidecars/rf/analyze_aoa.py`) · `npm run dev` · open dashboard · **Both** view.
+**Setup:** `npm install && npm run build && npm run dev`, open http://127.0.0.1:5173.
 
-**Pitch:** Live AIS proves the fleet concept with partial coverage. One full-stack historical vessel carries the complete pack — signed telemetry, OSNMA ICD, and dual-antenna lab AoA.
-
----
-
-## 90-second path
-
-1. **Both** map — live (cyan) + Hist Lab together. Hist Lab = recorded Digitraffic ships **plus three synthetic ships** (`VESSEL-00x`, labelled *simulated*).
-2. Left panel → **Full-stack** ship → Evidence: `spatial_aoa` + `rf_lab` (demo capture), OSNMA (ICD test vector), device signature. Each row shows its evidence class.
-3. Scenarios → **Sudden spoof** / **Gradual drift** / **RF AoA single-direction** → the attack lands on a **synthetic** ship (the API answers with `target` and, if you had a recorded ship selected, `retargeted_from`). Trust drops; kinematics / geographic / AoA fail.
-4. **Tamper** / **Replay** → forensics fail-closed (attacks the simulated device channel, not the recorded AIS). Cyber → **Send without challenge** → reject.
-5. Click a **non-fullstack Hist Lab** ship → OSNMA unavailable (“bound to full-stack only”). **LIVE** → RF/AoA/OSNMA unavailable.
-6. Verify audit → CHAIN + CHECKPOINT OK. Shore signs tips; device-sim holds device keys (`role=shore`).
-
-Say: “We never inject attacks into recorded or live ships — only into ships we simulate. AoA needs a receiver path; Digitraffic has none, so we don’t fake it.”
-
-Injection policy (no override): every injected attack — scenarios, `/api/rf/load` spoof, `/api/rf/result`, `/api/osnma/verify` failure — lands on a simulated ship. Recorded and live ships never receive injected data; the recorded full-stack ship only carries its normal demo evidence (OSNMA test vector, nominal RF capture). `NORTHSTAR_LAB_SIM_SHIPS` (default 3) sets how many synthetic ships join the Hist Lab. The offline evaluation (`npm run eval:pipeline`) injects attacks into a copy of the frozen recording for measurement only; nothing from it is shown in the app.
+**Pitch:** Public AIS can be spoofed and GNSS can be jammed or faked. Northstar checks every reported position against physics, geography and independent sensors, verifies signed onboard telemetry, and explains which evidence agrees.
 
 ---
 
-## Fail-closed / RF checklist
+## 3-minute path
 
-| Step | Expect |
-|------|--------|
-| Full-stack selected | HIGH coverage vs live |
-| AoA nominal | `spatial_aoa` pass, cluster score shown |
-| AoA spoof cluster | fail + overlay label in Evidence/Cyber |
-| LIVE contrast | rf_lab / spatial_aoa unavailable |
-| Audit / export | JSON for judges |
+1. **Live view.** Real ships in the Gulf of Finland, moving in real time. Click one: the Evidence tab shows what public AIS alone can support (kinematics, geography, nearby traffic, identity). Layers live ships can never have are hidden.
+2. **Lab view → the lab vessel.** Its independent sensor recordings were received from a lab at UIUC. Evidence shows recorded radar, GNSS-free dead reckoning, receiver diagnostics, a second AIS network and a verified device signature; synthetic inputs are labelled.
+3. **Lab vessel events → Jump** to the receiver-flagged spoofing event. The vessel's AIS jumps to a fake position; it goes critical and the evidence shows independent confirmation (radar disagrees, dead reckoning disagrees, receiver flags spoofing, RF capture shows a single-direction signal). Events show the clock-driven jamming / spoofing alerts.
+4. **Attack a simulated ship.** *Sudden spoof*, *Gradual drift*, *AIS conflict*, *GNSS jam*, *IMU disagree*: the notice shows which simulated ship was hit. Attacks never touch recorded or live ships. *Normal* stops the attack.
+5. **Security tab.** *Verify audit chain* (✓ intact), *Send without challenge* (✓ rejected), device identity, recent security events, controls in place.
+6. **Reset Lab** to rewind.
+
+Say: "We never inject attacks into real ships, and we label every piece of evidence by where it came from."
 
 ---
 
-## Residual risk (say out loud)
+## Honest limits (say out loud)
 
-- Center freq 95.5 MHz as provided (likely IF).
-- Spoof-cluster demo is a **labeled** single-direction overlay — raw capture has no spoof timestamps.
-- Absolute AoA needs known baseline; we show relative phase / cluster.
-- Default keys are software; SoftHSM/YubiKey PKCS#11 path optional (`HARDWARE_KEYS.md`) — SoftHSM ≠ silicon.
-- Audit checkpoint stops casual genesis-rewrite; still needs shore key + mirror compromise for full forge.
+- Strong independent evidence exists for one instrumented vessel; other ships rely on AIS-based checks.
+- The lab vessel's attestation and OSNMA inputs are synthetic.
+- A second GNSS receiver on the same ship was spoofed too: independence has to come from non-GNSS sensors.
+- Trust scores are integrity estimates, not probabilities.
